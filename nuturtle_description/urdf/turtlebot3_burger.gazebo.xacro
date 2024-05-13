@@ -17,7 +17,7 @@
           <preserveFixedJoint>true</preserveFixedJoint>
         </gazebo>
 
-        <gazebo reference="base_laser" >
+        <gazebo reference="base_scan" >
           <sensor name='gpu_lidar' type='gpu_lidar'>
             <topic>scan</topic>
             <update_rate>10</update_rate>
@@ -44,7 +44,7 @@
             </lidar>
             <alwaysOn>1</alwaysOn>
             <visualize>true</visualize>
-            <ignition_frame_id>base_laser</ignition_frame_id>
+            <ignition_frame_id>base_scan</ignition_frame_id>
         </sensor>
     </gazebo>
 
