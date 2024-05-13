@@ -213,4 +213,5 @@
     </inertial>
   </link>
 
+  <xacro:include filename="$(find nuturtle_description)/urdf/turtlebot3_burger.gazebo.xacro" />
 </robot>
