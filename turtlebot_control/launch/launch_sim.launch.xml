@@ -1,12 +1,23 @@
 <launch>
+    <!-- Arguments -->
+    <arg name="window" default="60"
+     description="Specifies how many degrees of FOV is allowable."/>
+
     <!-- Launch the house simulation for the turtlebot in gz classic -->
     <include file="$(find-pkg-share turtlebot3_gazebo)/launch/turtlebot3_house.launch.py" />
 
-    <!-- launch rviz to show the robot moving around -->
+    <!-- Launch rviz to show the robot moving around -->
     <include file="$(find-pkg-share turtlebot3_bringup)/launch/rviz2.launch.py" />
 
+    <!-- Launch intercept node -->
+    <node pkg="turtlebot_control" exec="intercept" name="intercept">
+        <param name="window" value="$(var window)"/>
+    </node>
+
     <!-- Launch slam-toolbox in online async mode -->
-    <include file="$(find-pkg-share slam_toolbox)/launch/online_async_launch.py"/>
+    <include file="$(find-pkg-share slam_toolbox)/launch/online_async_launch.py">
+        <arg name="params_file" value="$(find-pkg-share turtlebot_control)/config/mapper_params_online_async.yaml"/>
+    </include>
 
 </launch>
   

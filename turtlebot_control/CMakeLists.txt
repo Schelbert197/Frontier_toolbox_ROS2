@@ -7,8 +7,21 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(sensor_msgs REQUIRED)
 find_package(slam_toolbox)
 # find_package(turtlelib) # MAYBE ADD THIS BACK IN WHEN NEEDED
+
+# Odometry
+add_executable(intercept src/intercept.cpp)
+ament_target_dependencies(intercept rclcpp sensor_msgs)
+# target_link_libraries(intercept turtlelib::turtlelib "${cpp_typesupport_target}")
+
+install(TARGETS
+intercept
+DESTINATION lib/${PROJECT_NAME})
+
+target_compile_features(intercept PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -24,9 +37,10 @@ endif()
 
 # Install launch files.
 install(DIRECTORY
+  config
   launch
-
-  DESTINATION share/turtlebot_control
+  src
+  DESTINATION share/${PROJECT_NAME}
 )
 
 ament_package()
