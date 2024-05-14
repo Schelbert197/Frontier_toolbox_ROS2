@@ -8,8 +8,7 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(slam_toolbox)
-find_package(turtlelib)
-find_package(nuturtle_description)
+# find_package(turtlelib) # MAYBE ADD THIS BACK IN WHEN NEEDED
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -22,5 +21,12 @@ if(BUILD_TESTING)
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 endif()
+
+# Install launch files.
+install(DIRECTORY
+  launch
+
+  DESTINATION share/turtlebot_control
+)
 
 ament_package()

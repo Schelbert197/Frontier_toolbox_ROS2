@@ -1,0 +1,12 @@
+<launch>
+    <!-- Launch the house simulation for the turtlebot in gz classic -->
+    <include file="$(find-pkg-share turtlebot3_gazebo)/launch/turtlebot3_house.launch.py" />
+
+    <!-- launch rviz to show the robot moving around -->
+    <include file="$(find-pkg-share turtlebot3_bringup)/launch/rviz2.launch.py" />
+
+    <!-- Launch slam-toolbox in online async mode -->
+    <include file="$(find-pkg-share slam_toolbox)/launch/online_async_launch.py"/>
+
+</launch>
+  
