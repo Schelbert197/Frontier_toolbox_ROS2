@@ -28,10 +28,10 @@ public:
   : Node("intercept")
   {
     // Parameter to define size of lidar range
-    auto window_des = rcl_interfaces::msg::ParameterDescriptor{};
-    window_des.description = "Timer callback window [Hz] (default 100 Hz)";
-    declare_parameter("window", 60, window_des);
-    int window = get_parameter("window").get_parameter_value().get<int>();
+    // auto window_des = rcl_interfaces::msg::ParameterDescriptor{};
+    // window_des.description = "Timer callback window [Hz] (default 100 Hz)";
+    // declare_parameter("window", 60, window_des);
+    // int window = get_parameter("window").get_parameter_value().get<int>();
 
     // Subscribers
     laser_scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
@@ -48,13 +48,17 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr laser_scan_sub_;
   rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr updated_scan_publisher_;
   // Variables
-  int window;
+  int window = 60;
 
   /// \brief Laser Scan topic callback to narrow FOV
   void laser_scan_callback(const sensor_msgs::msg::LaserScan & msg)
   {
     // Set most things exactly as the original message
     sensor_msgs::msg::LaserScan new_scan;
+
+    // Resize the ranges vector to match the original size
+    new_scan.ranges.resize(msg.ranges.size());
+
     new_scan.header = msg.header;
     new_scan.angle_increment = msg.angle_increment;
     new_scan.angle_max = msg.angle_max;
@@ -67,8 +71,8 @@ private:
     new_scan.intensities = msg.intensities;
 
     // Loop through and set 0 all out of range
-    for (int i = 0; i < msg.ranges.size(); i++) {
-      if (i < window) {
+    for (size_t i = 0; i < msg.ranges.size(); i++) {
+      if (i < static_cast<size_t>(window)) {
         new_scan.ranges.at(i) = msg.ranges.at(i);
       } else {
         new_scan.ranges.at(i) = 0.0;
