@@ -17,6 +17,7 @@
 #include <string>
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
+#include "std_msgs/msg/int64.hpp"
 
 
 using namespace std::chrono_literals;
@@ -27,16 +28,15 @@ public:
   Intercept()
   : Node("intercept")
   {
-    // Parameter to define size of lidar range
-    // auto window_des = rcl_interfaces::msg::ParameterDescriptor{};
-    // window_des.description = "Timer callback window [Hz] (default 100 Hz)";
-    // declare_parameter("window", 60, window_des);
-    // int window = get_parameter("window").get_parameter_value().get<int>();
 
     // Subscribers
     laser_scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
       "/scan", 10, std::bind(
         &Intercept::laser_scan_callback, this,
+        std::placeholders::_1));
+    window_range_sub_ = create_subscription<std_msgs::msg::Int64>(
+      "/fov", 10, std::bind(
+        &Intercept::fov_callback, this,
         std::placeholders::_1));
 
     // Publishers
@@ -47,6 +47,7 @@ private:
   // Create Objects
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr laser_scan_sub_;
   rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr updated_scan_publisher_;
+  rclcpp::Subscription<std_msgs::msg::Int64>::SharedPtr window_range_sub_;
   // Variables
   int window = 60;
 
@@ -81,6 +82,12 @@ private:
 
     // Publish new reduced FOV laser scan
     updated_scan_publisher_->publish(new_scan);
+  }
+
+  /// \brief FOV topic callback to narrow FOV
+  void fov_callback(const std_msgs::msg::Int64::SharedPtr msg)
+  {
+    window = static_cast<int>(msg->data);
   }
 
 };
