@@ -4,10 +4,13 @@
      description="Specifies how many degrees of FOV is allowable."/>
 
     <!-- Launch the house simulation for the turtlebot in gz classic -->
-    <include file="$(find-pkg-share turtlebot3_gazebo)/launch/turtlebot3_house.launch.py" />
+    <include file="$(find-pkg-share turtlebot3_gazebo)/launch/turtlebot3_world.launch.py" />
 
     <!-- Launch rviz to show the robot moving around -->
-    <include file="$(find-pkg-share turtlebot3_bringup)/launch/rviz2.launch.py" />
+    <include file="$(find-pkg-share turtlebot_control)/launch/turtlebot3_rviz.launch.py" />
+
+    <!-- Default rviz2 launch file from Robotis -->
+    <!-- <include file="$(find-pkg-share turtlebot3_bringup)/launch/rviz2.launch.py" /> -->
 
     <!-- Launch intercept node -->
     <node pkg="turtlebot_control" exec="intercept" name="intercept">

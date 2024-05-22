@@ -49,7 +49,7 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr updated_scan_publisher_;
   rclcpp::Subscription<std_msgs::msg::Int64>::SharedPtr window_range_sub_;
   // Variables
-  int window = 60;
+  int window = 360;
 
   /// \brief Laser Scan topic callback to narrow FOV
   void laser_scan_callback(const sensor_msgs::msg::LaserScan & msg)
