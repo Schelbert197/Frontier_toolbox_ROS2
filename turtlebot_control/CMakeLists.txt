@@ -9,19 +9,33 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(slam_toolbox)
 # find_package(turtlelib) # MAYBE ADD THIS BACK IN WHEN NEEDED
 
-# Odometry
+# Intercept
 add_executable(intercept src/intercept.cpp)
 ament_target_dependencies(intercept rclcpp sensor_msgs)
 # target_link_libraries(intercept turtlelib::turtlelib "${cpp_typesupport_target}")
 
+# Simple Move Obstacle Avoidance Node
+add_executable(simple_move src/simple_move.cpp)
+ament_target_dependencies(simple_move rclcpp sensor_msgs geometry_msgs)
+
+# New node for choreographed movement
+add_executable(choreographed src/choreographed.cpp)
+ament_target_dependencies(choreographed rclcpp geometry_msgs)
+
 install(TARGETS
 intercept
+simple_move
+choreographed
 DESTINATION lib/${PROJECT_NAME})
 
 target_compile_features(intercept PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+target_compile_features(simple_move PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+target_compile_features(choreographed PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
