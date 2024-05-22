@@ -18,6 +18,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
 #include "std_msgs/msg/int64.hpp"
+#include "visualization_msgs/msg/marker.hpp"
 
 
 using namespace std::chrono_literals;
@@ -41,6 +42,7 @@ public:
 
     // Publishers
     updated_scan_publisher_ = create_publisher<sensor_msgs::msg::LaserScan>("/narrow/scan", 10);
+    fov_range_publisher_ = create_publisher<visualization_msgs::msg::Marker>("/Marker", 10);
   }
 
 private:
@@ -48,6 +50,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr laser_scan_sub_;
   rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr updated_scan_publisher_;
   rclcpp::Subscription<std_msgs::msg::Int64>::SharedPtr window_range_sub_;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr fov_range_publisher_;
   // Variables
   int window = 360;
 
@@ -87,7 +90,33 @@ private:
   /// \brief FOV topic callback to narrow FOV
   void fov_callback(const std_msgs::msg::Int64::SharedPtr msg)
   {
+    // Set window value
     window = static_cast<int>(msg->data);
+
+    // Create and publish marker to see current value in RVIZ
+    auto marker = visualization_msgs::msg::Marker();
+    marker.header.frame_id = "odom";
+    marker.header.stamp = this->now();
+    marker.ns = "text_marker";
+    marker.id = 0;
+    marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+    marker.pose.position.x = 3.0;
+    marker.pose.position.y = 3.0;
+    marker.pose.position.z = 1.0;
+    marker.pose.orientation.x = 0.0;
+    marker.pose.orientation.y = 0.0;
+    marker.pose.orientation.z = 0.0;
+    marker.pose.orientation.w = 1.0;
+    marker.scale.x = 0.01;
+    marker.scale.y = 5.0;
+    marker.scale.z = 1.0;
+    marker.color.r = 0.0f;
+    marker.color.g = 1.0f;
+    marker.color.b = 0.0f;
+    marker.color.a = 1.0;
+    marker.text = "FOV: " + std::to_string(window);
+    fov_range_publisher_->publish(marker);
   }
 
 };

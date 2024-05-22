@@ -10,12 +10,13 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 find_package(slam_toolbox)
 # find_package(turtlelib) # MAYBE ADD THIS BACK IN WHEN NEEDED
 
 # Intercept
 add_executable(intercept src/intercept.cpp)
-ament_target_dependencies(intercept rclcpp sensor_msgs)
+ament_target_dependencies(intercept rclcpp sensor_msgs visualization_msgs)
 # target_link_libraries(intercept turtlelib::turtlelib "${cpp_typesupport_target}")
 
 # Simple Move Obstacle Avoidance Node

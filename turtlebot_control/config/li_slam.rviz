@@ -9,6 +9,7 @@ Panels:
         - /LaserScan1
         - /TF1/Frames1
         - /Map1
+        - /Marker1
       Splitter Ratio: 0.5
     Tree Height: 765
   - Class: rviz_common/Selection
@@ -66,7 +67,7 @@ Visualization Manager:
       Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 3
-      Size (m): 0.009999999776482582
+      Size (m): 0.029999999329447746
       Style: Flat Squares
       Topic:
         Depth: 5
@@ -243,6 +244,19 @@ Visualization Manager:
         Value: /map_updates
       Use Timestamp: false
       Value: true
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Marker
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /Marker
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -277,7 +291,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 7.944110870361328
+      Distance: 8.999526977539062
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -292,10 +306,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.5497971177101135
+      Pitch: 0.6497970223426819
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 3.4354074001312256
+      Yaw: 3.485408067703247
     Saved: ~
 Window Geometry:
   Displays:
