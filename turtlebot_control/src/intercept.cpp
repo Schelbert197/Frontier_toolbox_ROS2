@@ -95,7 +95,7 @@ private:
 
     // Create and publish marker to see current value in RVIZ
     auto marker = visualization_msgs::msg::Marker();
-    marker.header.frame_id = "odom";
+    marker.header.frame_id = "map";
     marker.header.stamp = this->now();
     marker.ns = "text_marker";
     marker.id = 0;
