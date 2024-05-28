@@ -74,12 +74,20 @@ private:
     new_scan.scan_time = msg.scan_time;
     new_scan.intensities = msg.intensities;
 
+    // Calculate the bounds for the window
+    int start_index = 180 - ((360 - window) / 2);
+    int end_index = 180 + ((360 - window) / 2);
+
+    // Ensure the bounds are within the range of the scan data indices
+    start_index = std::max(0, start_index);
+    end_index = std::min(static_cast<int>(msg.ranges.size()) - 1, end_index);
+
     // Loop through and set 0 all out of range
     for (size_t i = 0; i < msg.ranges.size(); i++) {
-      if (i < static_cast<size_t>(window)) {
-        new_scan.ranges.at(i) = msg.ranges.at(i);
-      } else {
+      if (i >= static_cast<size_t>(start_index) && i <= static_cast<size_t>(end_index)) {
         new_scan.ranges.at(i) = 0.0;
+      } else {
+        new_scan.ranges.at(i) = msg.ranges.at(i);
       }
     }
 
