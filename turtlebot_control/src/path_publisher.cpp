@@ -29,6 +29,8 @@ private:
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr map_path_pub_;
   nav_msgs::msg::Path path_;
   nav_msgs::msg::Path map_path_;
+  double total_error_distance_ = 0.0;
+  double total_norm_err_ = 0.0;
 
   // Tf objects
   tf2_ros::Buffer tf_buffer_;
@@ -63,6 +65,22 @@ private:
       RCLCPP_WARN(
         this->get_logger(), "Could not transform %s to map: %s",
         msg->header.frame_id.c_str(), ex.what());
+    }
+
+    // Calculate the Euclidean distance between the last poses of both paths
+    if (!path_.poses.empty() && !map_path_.poses.empty()) {
+      const auto & last_pose_odom = path_.poses.back().pose;
+      const auto & last_pose_map = map_path_.poses.back().pose;
+
+      double dx = last_pose_odom.position.x - last_pose_map.position.x;
+      double dy = last_pose_odom.position.y - last_pose_map.position.y;
+      double distance = std::sqrt(dx * dx + dy * dy);
+
+      total_error_distance_ += distance;
+      total_norm_err_ = total_error_distance_/path_.poses.size();
+
+      RCLCPP_INFO(this->get_logger(), "Last Point Euclidean Distance: %f", distance);
+      RCLCPP_INFO(this->get_logger(), "Total Aggregated and Normalized error: %f", total_norm_err_);
     }
   }
 };

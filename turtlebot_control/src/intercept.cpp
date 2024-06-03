@@ -91,7 +91,6 @@ private:
       }
     }
 
-    // Publish new reduced FOV laser scan
     updated_scan_publisher_->publish(new_scan);
   }
 
