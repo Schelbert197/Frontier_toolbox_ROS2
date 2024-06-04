@@ -1,4 +1,5 @@
 #include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/float32.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
@@ -16,6 +17,7 @@ public:
       "/odom", 10, std::bind(&PathPublisher::odom_callback, this, std::placeholders::_1));
     path_pub_ = this->create_publisher<nav_msgs::msg::Path>("/robot_path", 10);
     map_path_pub_ = this->create_publisher<nav_msgs::msg::Path>("/robot_map_path", 10);
+    error_pub_ = this->create_publisher<std_msgs::msg::Float32>("/error", 10);
 
 
     path_.header.frame_id = "map";  // Change this to "map" if you want the path in the map frame
@@ -27,6 +29,7 @@ private:
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr map_path_pub_;
+  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr error_pub_;
   nav_msgs::msg::Path path_;
   nav_msgs::msg::Path map_path_;
   double total_error_distance_ = 0.0;
@@ -79,8 +82,12 @@ private:
       total_error_distance_ += distance;
       total_norm_err_ = total_error_distance_/path_.poses.size();
 
-      RCLCPP_INFO(this->get_logger(), "Last Point Euclidean Distance: %f", distance);
-      RCLCPP_INFO(this->get_logger(), "Total Aggregated and Normalized error: %f", total_norm_err_);
+      RCLCPP_DEBUG(this->get_logger(), "Last Point Euclidean Distance: %f", distance);
+      RCLCPP_DEBUG(this->get_logger(), "Total Aggregated and Normalized error: %f", total_norm_err_);
+
+      std_msgs::msg::Float32 error_msg;
+      error_msg.data = total_norm_err_;
+      error_pub_->publish(error_msg);
     }
   }
 };
