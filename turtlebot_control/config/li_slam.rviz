@@ -165,19 +165,20 @@ Visualization Manager:
       Show Names: true
       Tree:
         map:
-          odom:
-            base_footprint:
-              base_link:
-                base_scan:
-                  {}
-                caster_back_link:
-                  {}
-                imu_link:
-                  {}
-                wheel_left_link:
-                  {}
-                wheel_right_link:
-                  {}
+          {}
+        odom:
+          base_footprint:
+            base_link:
+              base_scan:
+                {}
+              caster_back_link:
+                {}
+              imu_link:
+                {}
+              wheel_left_link:
+                {}
+              wheel_right_link:
+                {}
       Update Interval: 0
       Value: true
     - Angle Tolerance: 0.10000000149011612
@@ -309,19 +310,6 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /robot_map_path
       Value: true
-    - Class: rviz_default_plugins/MarkerArray
-      Enabled: true
-      Name: MarkerArray
-      Namespaces:
-        slam_toolbox: true
-        slam_toolbox_edges: true
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /slam_toolbox/graph_visualization
-      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -371,10 +359,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.7297970056533813
+      Pitch: 0.6497970223426819
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 3.2854056358337402
+      Yaw: 3.485408067703247
     Saved: ~
 Window Geometry:
   Displays:
@@ -390,5 +378,5 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 1355
-  X: 616
-  Y: 46
+  X: 2418
+  Y: 0

@@ -7,53 +7,7 @@
   <maintainer email="srikanthschelbert2024@u.northwestern.edu">sags</maintainer>
   <license>MIT</license>
 
-  <!-- Build tool dependencies -->
   <buildtool_depend>ament_cmake</buildtool_depend>
-
-  <!-- Build dependencies -->
-  <build_depend>tf2_geometry_msgs</build_depend>
-  <build_depend>rclcpp</build_depend>
-  <build_depend>sensor_msgs</build_depend>
-  <build_depend>geometry_msgs</build_depend>
-  <build_depend>visualization_msgs</build_depend>
-  <build_depend>nav_msgs</build_depend>
-  <build_depend>tf</build_depend>
-  <build_depend>tf2_ros</build_depend>
-
-  <!-- Execution dependencies -->
-  <exec_depend>tf2_geometry_msgs</exec_depend>
-  <exec_depend>ros2launch</exec_depend>
-  <exec_depend>slam_toolbox</exec_depend>
-  <exec_depend>ros_gz_sim</exec_depend>
-  <exec_depend>rviz2</exec_depend>
-  <exec_depend>rclcpp</exec_depend>
-  <exec_depend>sensor_msgs</exec_depend>
-  <exec_depend>geometry_msgs</exec_depend>
-  <exec_depend>visualization_msgs</exec_depend>
-  <exec_depend>nav_msgs</exec_depend>
-  <exec_depend>tf</exec_depend>
-  <exec_depend>tf2_ros</exec_depend>
-
-  <!-- Test dependencies -->
-  <test_depend>ament_lint_auto</test_depend>
-  <test_depend>ament_lint_common</test_depend>
-
-  <export>
-    <build_type>ament_cmake</build_type>
-  </export>
-</package>
-<!-- <?xml version="1.0"?>
-<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
-<package format="3">
-  <name>turtlebot_control</name>
-  <version>0.0.0</version>
-  <description>Creating a simple package to control/process the turtlebot data</description>
-  <maintainer email="srikanthschelbert2024@u.northwestern.edu">sags</maintainer>
-  <license>MIT</license>
-
-  <buildtool_depend>ament_cmake</buildtool_depend>
-
-  <build_depend>tf2_geometry_msgs</build_depend>
 
   <exec_depend>ros2launch</exec_depend>
   <!-- <exec_depend>nubot</exec_depend> -->
@@ -61,7 +15,6 @@
   <exec_depend>ros_gz_sim</exec_depend>
   <!-- <exec_depend>ros_launch</exec_depend> -->
   <exec_depend>rviz2</exec_depend>
-  <exec_depend>tf2_geometry_msgs</exec_depend>
 
   <depend>rclcpp</depend>
   <depend>sensor_msgs</depend>
@@ -70,6 +23,7 @@
   <depend>nav_msgs</depend>
   <depend>tf</depend>
   <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
@@ -77,4 +31,4 @@
   <export>
     <build_type>ament_cmake</build_type>
   </export>
-</package> -->
+</package>
