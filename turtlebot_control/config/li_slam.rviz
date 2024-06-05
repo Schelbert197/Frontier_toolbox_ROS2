@@ -165,20 +165,19 @@ Visualization Manager:
       Show Names: true
       Tree:
         map:
-          {}
-        odom:
-          base_footprint:
-            base_link:
-              base_scan:
-                {}
-              caster_back_link:
-                {}
-              imu_link:
-                {}
-              wheel_left_link:
-                {}
-              wheel_right_link:
-                {}
+          odom:
+            base_footprint:
+              base_link:
+                base_scan:
+                  {}
+                caster_back_link:
+                  {}
+                imu_link:
+                  {}
+                wheel_left_link:
+                  {}
+                wheel_right_link:
+                  {}
       Update Interval: 0
       Value: true
     - Angle Tolerance: 0.10000000149011612
@@ -245,7 +244,7 @@ Visualization Manager:
       Enabled: true
       Name: Marker
       Namespaces:
-        {}
+        text_marker: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -310,6 +309,19 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /robot_map_path
       Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: MarkerArray
+      Namespaces:
+        slam_toolbox: true
+        slam_toolbox_edges: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /slam_toolbox/graph_visualization
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -344,7 +356,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 8.999526977539062
+      Distance: 9.988123893737793
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -359,10 +371,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.6497970223426819
+      Pitch: 1.0047968626022339
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 3.485408067703247
+      Yaw: 3.3454108238220215
     Saved: ~
 Window Geometry:
   Displays:

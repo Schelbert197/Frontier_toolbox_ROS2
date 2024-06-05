@@ -44,6 +44,7 @@ private:
     publisher_->publish(message);
   }
 
+  /// @brief Moves the robot in a predetermined path then stops
   void timer_callback()
   {
     counter_++;
