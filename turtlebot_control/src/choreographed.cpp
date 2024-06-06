@@ -1,6 +1,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/float32.hpp>
 #include <geometry_msgs/msg/twist.hpp>
+#include "visualization_msgs/msg/marker.hpp"
 
 class Choreographed : public rclcpp::Node
 {
@@ -9,6 +10,7 @@ public:
   : Node("choreographed"), counter_(0)
   {
     publisher_ = this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
+    error_publisher_ = create_publisher<visualization_msgs::msg::Marker>("/error_marker", 10);
     error_sub_ =
       this->create_subscription<std_msgs::msg::Float32>(
       "/error", 10,
@@ -23,19 +25,51 @@ private:
   // Objects
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr publisher_;
   rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr error_sub_;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr error_publisher_;
   rclcpp::TimerBase::SharedPtr timer_;
   // Variables
   int counter_ = -100;
   double current_error_ = 0.0;
 
+  /// @brief Listener on error topic saves current error
+  /// @param err
   void error_callback(const std_msgs::msg::Float32 err)
   {
     current_error_ = err.data;
   }
 
+  void publish_error()
+  {
+    // Create and publish marker to see current value in RVIZ
+    auto marker = visualization_msgs::msg::Marker();
+    marker.header.frame_id = "map";
+    marker.header.stamp = this->now();
+    marker.ns = "text_marker";
+    marker.id = 0;
+    marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+    marker.pose.position.x = 3.0;
+    marker.pose.position.y = -2.0;
+    marker.pose.position.z = 1.0;
+    marker.pose.orientation.x = 0.0;
+    marker.pose.orientation.y = 0.0;
+    marker.pose.orientation.z = 0.0;
+    marker.pose.orientation.w = 1.0;
+    marker.scale.x = 0.01;
+    marker.scale.y = 4.0;
+    marker.scale.z = 0.8;
+    marker.color.r = 0.8f;
+    marker.color.g = 0.2f;
+    marker.color.b = 0.0f;
+    marker.color.a = 1.0;
+    marker.text = "Error: " + std::to_string(current_error_);
+    error_publisher_->publish(marker);
+    RCLCPP_INFO(this->get_logger(), "Total Aggregated and Normalized error: %f", current_error_);
+  }
+
   /// @brief Creates the Twist msg object and publishes it
-  /// @param x_vec
-  /// @param rot_vec
+  /// @param x_vec desired speed in x-dir
+  /// @param rot_vec desired speed in y-dir
   void move(double x_vec, double rot_vec)
   {
     auto message = geometry_msgs::msg::Twist();
@@ -82,7 +116,7 @@ private:
 
     // Print error when complete
     if (counter_ == 10000) {
-      RCLCPP_INFO(this->get_logger(), "Total Aggregated and Normalized error: %f", current_error_);
+      publish_error();
     }
   }
 };

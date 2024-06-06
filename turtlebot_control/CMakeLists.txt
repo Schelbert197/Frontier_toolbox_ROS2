@@ -29,7 +29,7 @@ ament_target_dependencies(simple_move rclcpp sensor_msgs geometry_msgs)
 
 # New node for choreographed movement
 add_executable(choreographed src/choreographed.cpp)
-ament_target_dependencies(choreographed rclcpp geometry_msgs)
+ament_target_dependencies(choreographed rclcpp geometry_msgs visualization_msgs)
 
 # Add path publisher node
 add_executable(path_publisher src/path_publisher.cpp)

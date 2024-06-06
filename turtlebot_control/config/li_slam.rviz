@@ -244,7 +244,7 @@ Visualization Manager:
       Enabled: true
       Name: Marker
       Namespaces:
-        text_marker: true
+        {}
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -322,6 +322,19 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /slam_toolbox/graph_visualization
       Value: true
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Marker
+      Namespaces:
+        text_marker: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /error_marker
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -356,7 +369,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 9.988123893737793
+      Distance: 11.062077522277832
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -371,10 +384,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.0047968626022339
+      Pitch: 0.9997968673706055
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 3.3454108238220215
+      Yaw: 3.3504109382629395
     Saved: ~
 Window Geometry:
   Displays:
