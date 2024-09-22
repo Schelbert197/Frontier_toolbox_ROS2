@@ -50,11 +50,14 @@ def compare_maps(img1, img2, threshold=50):
     return percentage_diff, color_diff_map
 
 
+# Request map FOV
+FOV = input("What FOV would you like to compare?\n")
+
 # Paths to the .yaml and .pgm files for both maps
 yaml_file1 = '/home/sags/final_project/src/li-slam/turtlebot_control/maps/map360.yaml'
 pgm_file1 = '/home/sags/final_project/src/li-slam/turtlebot_control/maps/map360.pgm'
-yaml_file2 = '/home/sags/final_project/src/li-slam/turtlebot_control/maps/map330.yaml'
-pgm_file2 = '/home/sags/final_project/src/li-slam/turtlebot_control/maps/map330.pgm'
+yaml_file2 = '/home/sags/final_project/src/li-slam/turtlebot_control/maps/map' + FOV + '.yaml'
+pgm_file2 = '/home/sags/final_project/src/li-slam/turtlebot_control/maps/map' + FOV + '.pgm'
 
 # Load YAML metadata for both maps
 metadata1 = load_yaml_metadata(yaml_file1)
@@ -71,7 +74,8 @@ aligned_map1, aligned_map2 = align_maps(map1, map2)
 percentage_diff, diff_visualization = compare_maps(aligned_map1, aligned_map2)
 
 # Show the comparison result
-print(f"Percentage of differing cells: {percentage_diff:.2f}%")
+diff_percent = f"Percentage of differing cells: {percentage_diff:.2f}%"
+print(diff_percent)
 # cv2.imshow('Differences', diff_visualization)
 # cv2.waitKey(0)
 # cv2.destroyAllWindows()
@@ -80,5 +84,7 @@ print(f"Percentage of differing cells: {percentage_diff:.2f}%")
 cv2.imwrite('difference_map.png', diff_visualization)
 # Display the saved image using matplotlib
 plt.imshow(cv2.cvtColor(diff_visualization, cv2.COLOR_BGR2RGB))
-plt.title('Differences in Maps')
+plt.title(f'Differences in Maps for FOV: {FOV} deg.')
+plt.figtext(0.5, 0.01, diff_percent, wrap=True,
+            horizontalalignment='center', fontsize=12)
 plt.show()
