@@ -1,18 +1,12 @@
 <launch>
     <!-- Arguments -->
 
-    <!-- Launch the house simulation for the turtlebot in gz classic -->
-    <include file="$(find-pkg-share turtlebot3_gazebo)/launch/turtlebot3_world.launch.py" >
-        <arg name="x_pose" value="-1.0"/>
-        <arg name="y_pose" value="-1.5"/>
-    </include>
-
-    <!-- Launch rviz to show the robot moving around -->
-    <include file="$(find-pkg-share turtlebot_control)/launch/turtlebot3_rviz.launch.py" />
-
     <!-- Launch intercept node -->
     <node pkg="turtlebot_control" exec="intercept" name="intercept">
-        <param name="window" value="$(var window)"/>
+    </node>
+
+    <!-- Launch flattener node -->
+    <node pkg="isaac_sim_demo" exec="points_to_scan" name="points_to_scan">
     </node>
 
     <!-- Launch path node -->
@@ -24,4 +18,3 @@
     </include>
 
 </launch>
-  
