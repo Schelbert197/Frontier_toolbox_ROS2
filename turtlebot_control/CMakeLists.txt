@@ -31,21 +31,34 @@ ament_target_dependencies(simple_move rclcpp sensor_msgs geometry_msgs)
 add_executable(choreographed src/choreographed.cpp)
 ament_target_dependencies(choreographed rclcpp geometry_msgs visualization_msgs)
 
+# New node for choreographed movement in conference room
+add_executable(choreographed_conf src/choreographed_conf.cpp)
+ament_target_dependencies(choreographed_conf rclcpp geometry_msgs visualization_msgs)
+
 # Add path publisher node
 add_executable(path_publisher src/path_publisher.cpp)
 ament_target_dependencies(path_publisher rclcpp nav_msgs geometry_msgs tf2 tf2_ros tf2_geometry_msgs)
+
+# Add odom republisher node
+add_executable(odom_repub src/odom_repub.cpp)
+ament_target_dependencies(odom_repub rclcpp nav_msgs)
 
 install(TARGETS
 intercept
 simple_move
 choreographed
+choreographed_conf
 path_publisher
+odom_repub
 DESTINATION lib/${PROJECT_NAME})
 
 target_compile_features(intercept PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 target_compile_features(simple_move PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 target_compile_features(choreographed PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+target_compile_features(choreographed_conf PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 target_compile_features(path_publisher PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+target_compile_features(odom_repub PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+
 
 
 if(BUILD_TESTING)

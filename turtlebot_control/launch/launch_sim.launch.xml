@@ -20,7 +20,7 @@
 
     <!-- Launch slam-toolbox in online async mode -->
     <include file="$(find-pkg-share slam_toolbox)/launch/online_async_launch.py">
-        <arg name="slam_params_file" value="$(find-pkg-share turtlebot_control)/config/mapper_params_online_async.yaml"/>
+        <arg name="slam_params_file" value="$(find-pkg-share turtlebot_control)/config/mapper_params_online_async_sim.yaml"/>
     </include>
 
 </launch>
