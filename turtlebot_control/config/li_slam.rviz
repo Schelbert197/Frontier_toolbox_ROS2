@@ -326,7 +326,7 @@ Visualization Manager:
       Enabled: true
       Name: Marker
       Namespaces:
-        text_marker: true
+        {}
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -334,6 +334,26 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /error_marker
+      Value: true
+    - Alpha: 1
+      Axes Length: 1
+      Axes Radius: 0.10000000149011612
+      Class: rviz_default_plugins/Pose
+      Color: 248; 228; 92
+      Enabled: true
+      Head Length: 0.30000001192092896
+      Head Radius: 0.10000000149011612
+      Name: Pose
+      Shaft Length: 1
+      Shaft Radius: 0.05000000074505806
+      Shape: Arrow
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /goal_pose
       Value: true
   Enabled: true
   Global Options:
@@ -369,16 +389,16 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 11.062077522277832
+      Distance: 8.580423355102539
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -0.09679540991783142
-        Y: -0.015412976033985615
-        Z: -0.08031613379716873
+        X: -0.36561277508735657
+        Y: -0.2643268406391144
+        Z: -0.28239452838897705
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false

@@ -11,9 +11,7 @@
     <include file="$(find-pkg-share turtlebot_control)/launch/turtlebot3_rviz.launch.py" />
 
     <!-- Launch intercept node -->
-    <node pkg="turtlebot_control" exec="intercept" name="intercept">
-        <param name="window" value="$(var window)"/>
-    </node>
+    <node pkg="turtlebot_control" exec="intercept" name="intercept"></node>
 
     <!-- Launch path node -->
     <node pkg="turtlebot_control" exec="path_publisher" name="path_publisher"></node>
