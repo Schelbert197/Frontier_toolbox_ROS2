@@ -26,12 +26,16 @@ class FrontierExplorationNode(Node):
         # Publisher for goal pose
         self.goal_publisher = self.create_publisher(
             PoseStamped, '/goal_pose', 10)
+        # Publisher for modified map with highlighted frontiers
+        self.map_with_frontiers_pub = self.create_publisher(
+            OccupancyGrid, '/map_with_frontiers', 10)
 
         # Store frontiers and map information
         self.frontiers = []
         self.map_data = None
         self.map_resolution = None
         self.map_origin = None
+        self.map_info = None
 
         # tf2 buffer and listener for transforms
         self.tf_buffer = tf2_ros.Buffer()
@@ -43,20 +47,20 @@ class FrontierExplorationNode(Node):
         self.map_resolution = msg.info.resolution
         self.map_origin = (msg.info.origin.position.x,
                            msg.info.origin.position.y)
+        self.map_info = msg.info  # Store map metadata
 
         # Get the robot's current position from the transform
         robot_position = self.get_robot_position()
 
         if robot_position:
             self.robot_position = robot_position
-            # Detect frontiers
+            # Detect frontiers, remove old ones, and publish nearest
             self.find_frontiers()
-
-            # Remove frontiers that are no longer valid
             self.cleanup_frontiers()
-
-            # Find and publish the nearest frontier
             self.publish_nearest_frontier()
+
+            # After processing, publish the map with highlighted frontiers
+            self.publish_map_with_frontiers()
         else:
             self.get_logger().warn("Unable to determine robot's position.")
 
@@ -75,16 +79,17 @@ class FrontierExplorationNode(Node):
             return None
 
     def find_frontiers(self):
+        """Finds unknown cells with free neighbors and adds to list"""
         height, width = self.map_data.shape
         for y in range(height):
             for x in range(width):
                 if self.map_data[y, x] == -1:  # Unknown cell
                     # Check if it's a frontier (bordering a free cell)
-                    if self.is_frontier(x, y):
+                    if self.has_free_neighbor(x, y):
                         self.frontiers.append((x, y))
 
-    def is_frontier(self, x, y):
-        # Check neighboring cells to see if any are free (value 0)
+    def has_free_neighbor(self, x, y):
+        """Check neighboring cells to see if any are free (value 0)"""
         neighbors = [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]
         for nx, ny in neighbors:
             if 0 <= nx < self.map_data.shape[1] and 0 <= ny < self.map_data.shape[0]:
@@ -93,10 +98,11 @@ class FrontierExplorationNode(Node):
         return False
 
     def cleanup_frontiers(self):
-        # Remove frontiers that are no longer valid (explored or occupied)
+        """Remove frontiers that are no longer valid (explored or occupied)"""
         valid_frontiers = []
         for x, y in self.frontiers:
-            if self.map_data[y, x] == -1:  # Still unknown
+            if self.map_data[y, x] == -1 and self.has_free_neighbor(x, y):
+                # Only add those which are still frontier
                 valid_frontiers.append((x, y))
         self.frontiers = valid_frontiers
 
@@ -121,6 +127,34 @@ class FrontierExplorationNode(Node):
         self.goal_publisher.publish(goal_pose)
         self.get_logger().info(
             f"Publishing goal at {goal_pose.pose.position.x}, {goal_pose.pose.position.y}")
+
+    def publish_map_with_frontiers(self):
+        if self.map_data is None:
+            self.get_logger().warn("No map data available to highlight frontiers.")
+            return
+
+        # Create a copy of the original map to modify
+        modified_map_data = np.copy(self.map_data)
+
+        # Set frontier cells to a specific value, e.g., 50 for frontiers (represents "orange" in Rviz color scale)
+        for x, y in self.frontiers:
+            if 0 <= y < modified_map_data.shape[0] and 0 <= x < modified_map_data.shape[1]:
+                modified_map_data[y, x] = 50  # Example value for frontiers
+
+        # Convert the modified map data back to a flat list (required by OccupancyGrid)
+        modified_map_data_flat = modified_map_data.flatten().tolist()
+
+        # Create and populate a new OccupancyGrid message
+        modified_map = OccupancyGrid()
+        modified_map.header.stamp = self.get_clock().now().to_msg()
+        modified_map.header.frame_id = 'map'
+        # Copy over map metadata (resolution, origin, etc.)
+        modified_map.info = self.map_info
+        modified_map.data = modified_map_data_flat
+
+        # Publish the modified map with highlighted frontiers
+        self.map_with_frontiers_pub.publish(modified_map)
+        self.get_logger().info("Published map with highlighted frontiers.")
 
     def distance_to_robot(self, frontier):
         # Compute the distance from the robot to a frontier (in grid coordinates)
