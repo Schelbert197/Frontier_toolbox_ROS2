@@ -17,7 +17,7 @@ setup(
     zip_safe=True,
     maintainer='sags',
     maintainer_email='srikanthschelbert2024@u.northwestern.edu',
-    description='TODO: Package description',
+    description='A package to publish goal frontiers for frontier exploration with Nav2',
     license='Apache-2.0',
     tests_require=['pytest'],
     entry_points={

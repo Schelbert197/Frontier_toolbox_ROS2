@@ -1,8 +1,10 @@
 import rclpy
 from rclpy.lifecycle import LifecycleNode, TransitionCallbackReturn
+from rcl_interfaces.msg import ParameterDescriptor
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import PoseStamped
 import numpy as np
+import math
 import tf2_ros
 from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
 
@@ -37,6 +39,14 @@ class FrontierExplorationLifecycle(LifecycleNode):
         self.map_resolution = None
         self.map_origin = None
         self.map_info = None
+
+        # How far in front of robot [m] we want to minimize frontier distance
+        self.declare_parameter("viewpoint_depth", 1.0, ParameterDescriptor(
+            description="Minimize frontier dist. to X[m] in front of robot"))
+        self.viewpoint_depth = self.get_parameter(
+            "viewpoint_depth").get_parameter_value().double_value
+        self.get_logger().info(
+            f"Viewpoint depth set to: {self.viewpoint_depth} [m]")
 
         # tf2 buffer and listener for transforms
         self.tf_buffer = tf2_ros.Buffer()
@@ -80,22 +90,23 @@ class FrontierExplorationLifecycle(LifecycleNode):
                            msg.info.origin.position.y)
         self.map_info = msg.info  # Store map metadata
 
-        # Get the robot's current position from the transform
-        robot_position = self.get_robot_position()
+        # Get the robot's current viewpoint position from the transform
+        robot_vp_position = self.get_robot_viewpoint()
 
-        if robot_position:
-            self.robot_position = robot_position
+        if robot_vp_position:
+            self.robot_position = robot_vp_position
             # Detect frontiers, remove old ones, and publish nearest
             self.find_frontiers()
             self.cleanup_frontiers()
-            self.publish_nearest_frontier()
+            self.publish_goal_frontier()
 
             # After processing, publish the map with highlighted frontiers
             self.publish_map_with_frontiers()
         else:
             self.get_logger().warn("Unable to determine robot's position.")
 
-    def get_robot_position(self):
+    def get_robot_viewpoint(self):
+        """Looks up tf between /map and robot to get viewpoint location"""
         # Determine which transform to use based on the is_sim parameter
         base_frame = 'base_footprint' if self.is_sim else 'base_link'
         try:
@@ -104,7 +115,16 @@ class FrontierExplorationLifecycle(LifecycleNode):
             # Extract position from the transform
             x = transform.transform.translation.x
             y = transform.transform.translation.y
-            return (x, y)
+            _, _, yaw = self.quaternion_to_euler_angle(
+                transform.transform.rotation.w,
+                transform.transform.rotation.x,
+                transform.transform.rotation.y,
+                transform.transform.rotation.z
+            )
+            x_adj = x + (math.cos(yaw) * self.viewpoint_depth)
+            y_adj = y + (math.sin(yaw) * self.viewpoint_depth)
+            self.get_logger().info(f"Got new robot position at x,y: {x},{y}")
+            return (x_adj, y_adj)
         except (LookupException, ConnectivityException, ExtrapolationException) as e:
             self.get_logger().error(f"Error getting transform: {str(e)}")
             return None
@@ -137,14 +157,17 @@ class FrontierExplorationLifecycle(LifecycleNode):
                 valid_frontiers.append((x, y))
         self.frontiers = valid_frontiers
 
-    def publish_nearest_frontier(self):
+    def publish_goal_frontier(self):
         if not self.frontiers:
             self.get_logger().info("No frontiers available.")
             return
 
-        # Find the closest frontier to the robot
+        # Find the closest frontier to the robot's viewpoint
         nearest_frontier = min(
             self.frontiers, key=lambda f: self.distance_to_robot(f))
+
+        self.get_logger().info(
+            f"Nearest frontier: {self.cell_to_world(nearest_frontier)}")
 
         # Convert frontier cell to world coordinates
         goal_pose = PoseStamped()
@@ -160,14 +183,16 @@ class FrontierExplorationLifecycle(LifecycleNode):
             f"Publishing goal at {goal_pose.pose.position.x}, {goal_pose.pose.position.y}")
 
     def publish_map_with_frontiers(self):
+        """Publishes a map showing the existing frontiers of the Occ. Grid"""
         if self.map_data is None:
-            self.get_logger().warn("No map data available to highlight frontiers.")
+            self.get_logger().warn("No map data available to show frontiers.")
             return
 
         # Create a copy of the original map to modify
         modified_map_data = np.copy(self.map_data)
 
-        # Set frontier cells to a specific value, e.g., 50 for frontiers (represents "orange" in Rviz color scale)
+        # Set frontier cells to a specific value
+        # 50 for frontiers (represents "orange" in Rviz color scale)
         for x, y in self.frontiers:
             if 0 <= y < modified_map_data.shape[0] and 0 <= x < modified_map_data.shape[1]:
                 modified_map_data[y, x] = 50  # Example value for frontiers
@@ -188,17 +213,35 @@ class FrontierExplorationLifecycle(LifecycleNode):
         self.get_logger().info("Published map with highlighted frontiers.")
 
     def distance_to_robot(self, frontier):
-        # Compute the distance from the robot to a frontier (in grid coordinates)
-        fx, fy = frontier
+        """Compute the distance from the robot to a frontier"""
+        fx, fy = self.cell_to_world(frontier)
         rx, ry = self.robot_position
         return np.hypot(fx - rx, fy - ry)
 
     def cell_to_world(self, cell):
-        # Convert a grid cell to world coordinates
+        """Convert a grid cell to world coordinates"""
         x, y = cell
         world_x = self.map_origin[0] + (x * self.map_resolution)
         world_y = self.map_origin[1] + (y * self.map_resolution)
         return world_x, world_y
+
+    def quaternion_to_euler_angle(self, w, x, y, z):
+        ysqr = y * y
+
+        t0 = +2.0 * (w * x + y * z)
+        t1 = +1.0 - 2.0 * (x * x + ysqr)
+        X = math.degrees(math.atan2(t0, t1))
+
+        t2 = +2.0 * (w * y - z * x)
+        t2 = +1.0 if t2 > +1.0 else t2
+        t2 = -1.0 if t2 < -1.0 else t2
+        Y = math.degrees(math.asin(t2))
+
+        t3 = +2.0 * (w * z + x * y)
+        t4 = +1.0 - 2.0 * (ysqr + z * z)
+        Z = math.degrees(math.atan2(t3, t4))
+
+        return X, Y, Z
 
 
 def main(args=None):

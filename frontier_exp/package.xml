@@ -3,7 +3,7 @@
 <package format="3">
   <name>frontier_exp</name>
   <version>0.0.0</version>
-  <description>A package to publish goal frontiers for frontier exploration</description>
+  <description>A package to publish goal frontiers for frontier exploration with Nav2</description>
   <maintainer email="srikanthschelbert2024@u.northwestern.edu">sags</maintainer>
   <license>Apache-2.0</license>
 
