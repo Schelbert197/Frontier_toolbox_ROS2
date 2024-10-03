@@ -15,9 +15,8 @@ class FrontierExplorationLifecycle(LifecycleNode):
         self.get_logger().info('Frontier explorer lifecycle node initialized')
 
         # Parameter to specify if we are in simulation or real robot
-        self.declare_parameter('is_sim', True)
         self.is_sim = self.get_parameter(
-            'is_sim').get_parameter_value().bool_value
+            'use_sim_time').get_parameter_value().bool_value
 
         # Subscribe to the /map topic
         self.map_subscriber = self.create_subscription(

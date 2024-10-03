@@ -18,6 +18,13 @@ def generate_launch_description():
         description='Use simulation (true) or real robot time (false)'
     )
 
+    # Declare a launch argument for viewpoint_depth
+    viewpoint_depth_arg = DeclareLaunchArgument(
+        'viewpoint_depth',
+        default_value='1.0',  # Default value
+        description='Minimize frontier distance to X[m] in front of robot'
+    )
+
     # Get the path to the nav2_bringup package
     nav2_bringup_dir = get_package_share_directory('nav2_bringup')
 
@@ -36,7 +43,8 @@ def generate_launch_description():
         executable='frontier_lc',
         name='frontier_exploration',
         output='screen',
-        parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
+        parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')},
+                    {'viewpoint_depth': LaunchConfiguration('viewpoint_depth')}],
         namespace=''
     )
 
@@ -57,8 +65,9 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        # Declare sim_time argument
+        # Declare sim_time and viewpoint depth arguments
         use_sim_time_arg,
+        viewpoint_depth_arg,
 
         # Launch Nav2
         nav2_launch,
