@@ -15,8 +15,14 @@ find_package(nav_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+find_package(PCL REQUIRED)
+find_package(pcl_conversions REQUIRED)
+find_package(pcl_ros REQUIRED)
 find_package(slam_toolbox)
 # find_package(turtlelib) # MAYBE ADD THIS BACK IN WHEN NEEDED
+
+# Include directories for PCL
+include_directories(${PCL_INCLUDE_DIRS})
 
 # Intercept
 add_executable(intercept src/intercept.cpp)
@@ -43,13 +49,34 @@ ament_target_dependencies(path_publisher rclcpp nav_msgs geometry_msgs tf2 tf2_r
 add_executable(odom_repub src/odom_repub.cpp)
 ament_target_dependencies(odom_repub rclcpp nav_msgs)
 
+# Add your executable and link it to PCL
+add_library(pointcloud_to_laserscan_node SHARED src/pointcloud_to_laserscan.cpp)
+# Link libraries
+target_link_libraries(pointcloud_to_laserscan_node ${PCL_LIBRARIES})
+# Dependencies for the node
+ament_target_dependencies(pointcloud_to_laserscan_node
+  rclcpp
+  sensor_msgs
+  PCL
+  pcl_conversions
+  pcl_ros
+  tf2
+  tf2_ros
+)
+rclcpp_components_register_node(
+  pointcloud_to_laserscan_node
+  PLUGIN "PointCloudToLaserScan"
+  EXECUTABLE pointcloud_to_laserscan
+)
+
 install(TARGETS
-intercept
-simple_move
-choreographed
-choreographed_conf
-path_publisher
-odom_repub
+  intercept
+  simple_move
+  choreographed
+  choreographed_conf
+  path_publisher
+  odom_repub
+  pointcloud_to_laserscan_node
 DESTINATION lib/${PROJECT_NAME})
 
 target_compile_features(intercept PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
@@ -58,6 +85,7 @@ target_compile_features(choreographed PUBLIC c_std_99 cxx_std_17)  # Require C99
 target_compile_features(choreographed_conf PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 target_compile_features(path_publisher PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 target_compile_features(odom_repub PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+target_compile_features(pointcloud_to_laserscan_node PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 
 
 
@@ -72,6 +100,20 @@ if(BUILD_TESTING)
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 endif()
+
+# Export package dependencies
+ament_export_dependencies(
+  rclcpp
+  sensor_msgs
+  nav_msgs
+  visualization_msgs
+  geometry_msgs
+  PCL
+  pcl_conversions
+  pcl_ros
+  tf2
+  tf2_ros
+  tf2_geometry_msgs)
 
 # Install launch files.
 install(DIRECTORY
