@@ -15,6 +15,10 @@ The purpose of this package is to simulate a turtlebot3 with a 2D lidar sensor t
     - turtlebot3
     - turtlebot3_msgs
     - turtlebot3_simulations
+- PCL (Point Cloud Library)
+    - pcl_conversions
+    - pcl_ros (ros-humble-pcl-ros)
+- libpcap-dev
 ## How to use
 1. Build the package and ensure that the packages turtlebot3, turtlebot3_msgs, turtlebot3_simulations, and all dependencies are installed and build on the `humble-devel` branch.
 2. Source the workspace

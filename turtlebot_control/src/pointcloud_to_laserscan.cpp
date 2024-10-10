@@ -11,8 +11,8 @@
 class PointCloudToLaserScan : public rclcpp::Node
 {
 public:
-    PointCloudToLaserScan(const rclcpp::NodeOptions & options)
-  : Node("pointcloud_to_laserscan", options)
+  PointCloudToLaserScan()
+  : Node("pointcloud_to_laserscan")
   {
     // Declare and get parameters
     scan_height_ = this->declare_parameter("scan_height", 0.1);
@@ -69,7 +69,7 @@ private:
     std::vector<float> ranges(num_readings, std::numeric_limits<float>::infinity());
 
     // Process the filtered point cloud
-    for (const auto& point : cloud->points) {
+    for (const auto & point : cloud->points) {
       float x = point.x;
       float y = point.y;
       float distance = std::sqrt(x * x + y * y);
@@ -92,5 +92,10 @@ private:
 
 };
 
-#include "rclcpp_components/register_node_macro.hpp"
-RCLCPP_COMPONENTS_REGISTER_NODE(PointCloudToLaserScan)
+int main(int argc, char * argv[])
+{
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<PointCloudToLaserScan>());
+  rclcpp::shutdown();
+  return 0;
+}

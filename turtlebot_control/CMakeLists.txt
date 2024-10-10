@@ -50,11 +50,9 @@ add_executable(odom_repub src/odom_repub.cpp)
 ament_target_dependencies(odom_repub rclcpp nav_msgs)
 
 # Add your executable and link it to PCL
-add_library(pointcloud_to_laserscan_node SHARED src/pointcloud_to_laserscan.cpp)
-# Link libraries
-target_link_libraries(pointcloud_to_laserscan_node ${PCL_LIBRARIES})
+add_executable(pointcloud_to_laserscan src/pointcloud_to_laserscan.cpp)
 # Dependencies for the node
-ament_target_dependencies(pointcloud_to_laserscan_node
+ament_target_dependencies(pointcloud_to_laserscan
   rclcpp
   sensor_msgs
   PCL
@@ -62,11 +60,6 @@ ament_target_dependencies(pointcloud_to_laserscan_node
   pcl_ros
   tf2
   tf2_ros
-)
-rclcpp_components_register_node(
-  pointcloud_to_laserscan_node
-  PLUGIN "PointCloudToLaserScan"
-  EXECUTABLE pointcloud_to_laserscan
 )
 
 install(TARGETS
@@ -76,7 +69,7 @@ install(TARGETS
   choreographed_conf
   path_publisher
   odom_repub
-  pointcloud_to_laserscan_node
+  pointcloud_to_laserscan
 DESTINATION lib/${PROJECT_NAME})
 
 target_compile_features(intercept PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
@@ -85,7 +78,7 @@ target_compile_features(choreographed PUBLIC c_std_99 cxx_std_17)  # Require C99
 target_compile_features(choreographed_conf PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 target_compile_features(path_publisher PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 target_compile_features(odom_repub PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
-target_compile_features(pointcloud_to_laserscan_node PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+target_compile_features(pointcloud_to_laserscan PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 
 
 
