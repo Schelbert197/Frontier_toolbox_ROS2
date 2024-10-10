@@ -5,18 +5,9 @@
     <node pkg="turtlebot_control" exec="intercept" name="intercept">
     </node>
 
-    <!-- Launch the new composable node -->
-    <node pkg="rclcpp_components" exec="component_container" name="pointcloud_to_laserscan_container">
-        <param name="use_intra_process_comms" value="true"/>
-        <ros__parameters>
-            <parameter name="scan_height" type="double">0.1</parameter>
-            <parameter name="range_min" type="double">0.0</parameter>
-            <parameter name="range_max" type="double">100.0</parameter>
-            <parameter name="scan_frame" type="string">base_link</parameter>
-            <parameter name="scan_topic" type="string">/scan</parameter>
-        </ros__parameters>
-        <remap from="/sensors/lidar3d_0/velodyne_points" to="/sensors/lidar_3d/velodyne_points"/>
-    </node>
+    <!-- Launch flattener node -->
+    <!-- <node pkg="isaac_sim_demo" exec="points_to_scan" name="points_to_scan"></node> -->
+    <node pkg="turtlebot_control" exec="pointcloud_to_laserscan" name="pointcloud_to_laserscan"></node>
 
     <!-- Launch path node -->
     <node pkg="turtlebot_control" exec="path_publisher" name="path_publisher"></node>

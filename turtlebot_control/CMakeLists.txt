@@ -51,7 +51,6 @@ ament_target_dependencies(odom_repub rclcpp nav_msgs)
 
 # Add your executable and link it to PCL
 add_executable(pointcloud_to_laserscan src/pointcloud_to_laserscan.cpp)
-# Dependencies for the node
 ament_target_dependencies(pointcloud_to_laserscan
   rclcpp
   sensor_msgs
