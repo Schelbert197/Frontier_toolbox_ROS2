@@ -11,11 +11,11 @@
 class PointCloudToLaserScan : public rclcpp::Node
 {
 public:
-  PointCloudToLaserScan()
+    PointCloudToLaserScan()
   : Node("pointcloud_to_laserscan")
   {
     // Declare and get parameters
-    scan_height_ = this->declare_parameter("scan_height", 0.1);
+    scan_height_ = this->declare_parameter("scan_height", 0.15);
     range_min_ = this->declare_parameter("range_min", 0.0);
     range_max_ = this->declare_parameter("range_max", 100.0);
     scan_frame_ = this->declare_parameter<std::string>("scan_frame", "base_link");
@@ -23,7 +23,7 @@ public:
 
     // Subscription and publisher
     lidar_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-      "/sensors/lidar_3d/velodyne_points", 10,
+      "/sensors/lidar3d_0/velodyne_points", 10,
       std::bind(&PointCloudToLaserScan::pointcloud_callback, this, std::placeholders::_1));
 
     scan_pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>(scan_topic_, 10);
@@ -50,7 +50,7 @@ private:
     pcl::PassThrough<pcl::PointXYZ> pass;
     pass.setInputCloud(cloud);
     pass.setFilterFieldName("z");
-    pass.setFilterLimits(-scan_height_ / 2.0, scan_height_ / 2.0);
+    pass.setFilterLimits(-scan_height_, scan_height_);
     pass.filter(*cloud);
 
     // Prepare the LaserScan message
@@ -69,7 +69,7 @@ private:
     std::vector<float> ranges(num_readings, std::numeric_limits<float>::infinity());
 
     // Process the filtered point cloud
-    for (const auto & point : cloud->points) {
+    for (const auto& point : cloud->points) {
       float x = point.x;
       float y = point.y;
       float distance = std::sqrt(x * x + y * y);

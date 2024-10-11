@@ -37,7 +37,7 @@ amcl:
     z_max: 0.05
     z_rand: 0.5
     z_short: 0.05
-    scan_topic: scan
+    scan_topic: /narrow/scan
 
 bt_navigator:
   ros__parameters:
@@ -162,7 +162,7 @@ controller_server:
       sim_time: 1.7
       linear_granularity: 0.05
       angular_granularity: 0.025
-      transform_tolerance: 2.0 # Stuck being 2.0 now from 0.2 until /odom timestamp resolved
+      transform_tolerance: 0.2 # Fixed now timestamp issue with /odom tf is resolved
       xy_goal_tolerance: 0.25
       trans_stopped_velocity: 0.25
       short_circuit_trajectory_evaluation: True
@@ -208,7 +208,7 @@ local_costmap:
         mark_threshold: 0
         observation_sources: scan
         scan:
-          topic: /scan
+          topic: /narrow/scan
           max_obstacle_height: 2.0
           clearing: True
           marking: True
@@ -239,7 +239,7 @@ global_costmap:
         enabled: True
         observation_sources: scan
         scan:
-          topic: /scan
+          topic: /narrow/scan
           max_obstacle_height: 2.0
           clearing: True
           marking: True

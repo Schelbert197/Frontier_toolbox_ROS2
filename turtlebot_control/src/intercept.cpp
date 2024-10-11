@@ -74,20 +74,48 @@ private:
     new_scan.scan_time = msg.scan_time;
     new_scan.intensities = msg.intensities;
 
-    // Calculate the bounds for the window
-    int start_index = 180 - ((360 - window) / 2);
-    int end_index = 180 + ((360 - window) / 2);
+    // Detect whether the range is 0 to 2pi or -pi to pi
+    bool is_zero_to_two_pi = (msg.angle_min >= 0 && msg.angle_max > 0);
+    // Number of points in the scan message
+    size_t num_points = msg.ranges.size();
+    // Scale the window (in degrees) to the actual number of points
+    int window_in_points = static_cast<int>((window / 360.0) * num_points);
+    int start_index = 0;
+    int end_index = 0;
 
-    // Ensure the bounds are within the range of the scan data indices
-    start_index = std::max(0, start_index);
-    end_index = std::min(static_cast<int>(msg.ranges.size()) - 1, end_index);
+    if (is_zero_to_two_pi) {
+      // Calculate the bounds for the window, using the scaled points
+      start_index = (num_points / 2) - ((num_points - window_in_points) / 2);
+      end_index = (num_points / 2) + ((num_points - window_in_points) / 2);
 
-    // Loop through and set 0 all out of range
-    for (size_t i = 0; i < msg.ranges.size(); i++) {
-      if (i >= static_cast<size_t>(start_index) && i <= static_cast<size_t>(end_index)) {
-        new_scan.ranges.at(i) = 0.0;
-      } else {
-        new_scan.ranges.at(i) = msg.ranges.at(i);
+      // Ensure the bounds are within the range of the scan data indices
+      start_index = std::max(0, start_index);
+      end_index = std::min(static_cast<int>(num_points) - 1, end_index);
+
+      // Loop through and set 0 all out of range
+      for (size_t i = 0; i < msg.ranges.size(); i++) {
+        if (i >= static_cast<size_t>(start_index) && i <= static_cast<size_t>(end_index)) {
+          new_scan.ranges.at(i) = 0.0;
+        } else {
+          new_scan.ranges.at(i) = msg.ranges.at(i);
+        }
+      }
+    } else {
+      // Similar logic for -pi to pi case, adjusting for the negative angles
+      start_index = (num_points / 2) - ((window_in_points) / 2);
+      end_index = (num_points / 2) + ((window_in_points) / 2);
+
+      // Ensure the bounds are within the range of the scan data indices
+      start_index = std::max(0, start_index);
+      end_index = std::min(static_cast<int>(num_points) - 1, end_index);
+
+      // Loop through and set 0 all out of range
+      for (size_t i = 0; i < msg.ranges.size(); i++) {
+        if (i >= static_cast<size_t>(start_index) && i <= static_cast<size_t>(end_index)) {
+          new_scan.ranges.at(i) = msg.ranges.at(i);
+        } else {
+          new_scan.ranges.at(i) = 0.0;
+        }
       }
     }
 
@@ -99,6 +127,10 @@ private:
   {
     // Set window value
     window = static_cast<int>(msg->data);
+    if (window > 360 || window < 0) {
+      RCLCPP_INFO(this->get_logger(), "FOV %d is out of range and is being reset to 360", window);
+      window = 360;
+    }
 
     // Create and publish marker to see current value in RVIZ
     auto marker = visualization_msgs::msg::Marker();
