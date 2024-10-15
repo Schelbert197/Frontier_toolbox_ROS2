@@ -10,7 +10,6 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml',
-                                   'launch/frontier_nav2.launch.py',
                                    'launch/frontier_nav2_lc.launch.py']),
     ],
     install_requires=['setuptools'],
@@ -22,7 +21,6 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'frontier = frontier_exp.frontier:main',
             'frontier_lc = frontier_exp.frontier_lifecycle:main'
         ],
     },
