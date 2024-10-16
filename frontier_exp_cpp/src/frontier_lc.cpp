@@ -88,6 +88,8 @@ private:
 
   double viewpoint_depth_;
   bool is_sim_;
+  double radius_ = 2.5;
+  bool use_naive = false;
 
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_;
@@ -122,7 +124,8 @@ private:
 
       // Use setRPY to get yaw
       double roll, pitch, yaw;
-      tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
+      tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);// check whether this works correctly
+      RCLCPP_INFO(get_logger(), "Current Yaw: %f", yaw);
 
       // Adjust x and y based on the viewpoint depth
       double x_adj = x + std::cos(yaw) * viewpoint_depth_;
@@ -154,11 +157,10 @@ private:
     // Convert the vector to a string
     std::stringstream ss;
     ss << "Vector contents: ";
-    for (const auto &pair : frontiers_) {
+    for (const auto & pair : frontiers_) {
       ss << "(" << pair.first << ", " << pair.second << ") ";
     }
-
-    // Print the vector contents using RCLCPP_INFO
+    // Print the vector contents of the frontier vector
     RCLCPP_DEBUG(get_logger(), "%s", ss.str().c_str());
   }
 
@@ -201,15 +203,20 @@ private:
       return;
     }
 
-    auto nearest_frontier = *std::min_element(
-      frontiers_.begin(), frontiers_.end(), [this](const auto & f1, const auto & f2)
-      {
-        return distanceToRobot(f1) < distanceToRobot(f2);
-      });
+    std::pair<int, int> goal_frontier;
+    if (use_naive == true){
+      goal_frontier = *std::min_element(
+        frontiers_.begin(), frontiers_.end(), [this](const auto & f1, const auto & f2)
+        {
+          return distanceToRobot(f1) < distanceToRobot(f2);
+        });
+    } else {
+      goal_frontier = bestScoreFrontier();
+    }
 
     geometry_msgs::msg::PoseStamped goal_pose;
     goal_pose.header.frame_id = "map";
-    std::tie(goal_pose.pose.position.x, goal_pose.pose.position.y) = cellToWorld(nearest_frontier);
+    std::tie(goal_pose.pose.position.x, goal_pose.pose.position.y) = cellToWorld(goal_frontier);
     goal_pose.pose.position.z = 0.0;
     goal_pose.pose.orientation.w = 1.0;
 
@@ -246,6 +253,80 @@ private:
     return {world_x, world_y};
   }
 
+  int countUnknownCellsWithinRadius(int index, double rad)
+  {
+    int unknown_count = 0;
+
+    // Get map metadata
+    int width = map_data_.info.width;
+    int height = map_data_.info.height;
+    double resolution = map_data_.info.resolution;
+
+    // Calculate the center cell's row and column from the index
+    int center_row = index / width;
+    int center_col = index % width;
+
+    // Determine the search range in cells based on the radius
+    int range = static_cast<int>(std::round(rad / resolution));
+
+    // Loop through the square neighborhood around the center cell
+    for (int row = center_row - range; row <= center_row + range; ++row) {
+      for (int col = center_col - range; col <= center_col + range; ++col) {
+        // Skip cells outside the grid boundaries
+        if (row < 0 || row >= height || col < 0 || col >= width) {
+          continue;
+        }
+
+        // Compute the Euclidean distance from the center cell
+        double dist =
+          std::sqrt(std::pow(row - center_row, 2) + std::pow(col - center_col, 2)) * resolution;
+
+        // Only consider cells within the specified radius
+        if (dist <= rad) {
+          // Calculate the index of the current cell in the OccupancyGrid data
+          int cell_index = row * width + col;
+
+          // Check if the cell is unknown (-1)
+          if (map_data_.data[cell_index] == -1) {
+            unknown_count++;
+          }
+        }
+      }
+    }
+
+    return unknown_count;
+  }
+
+  std::pair<int, int> bestScoreFrontier() {
+
+    int best_score = 0;
+    int best_frontier_idx;
+
+    // // Loop through all frontiers and get score
+    // for (const auto & frontier : frontiers_) {
+    //   int idx = frontier.second * map_data_.info.width + frontier.first;
+    //   int frontier_score = countUnknownCellsWithinRadius(idx, radius_);
+    //   if (frontier_score > best_score) {
+    //     best_score = frontier_score;
+    //     best_frontier_idx = idx;
+    //   }
+    // }
+    // Loop through all frontiers and get score
+    for (size_t i = 0; i < frontiers_.size(); ++i) {
+      const auto &frontier = frontiers_.at(i);
+      int idx = frontier.second * map_data_.info.width + frontier.first;
+      int frontier_score = countUnknownCellsWithinRadius(idx, radius_);
+
+      if (frontier_score > best_score) {
+        best_score = frontier_score;
+        best_frontier_idx = i;  // Set to the index in frontiers_ instead of idx
+      }
+    }
+    RCLCPP_INFO(
+      get_logger(), "Selecting frontier %d, with score %d", best_frontier_idx, best_score);
+    return frontiers_.at(best_frontier_idx);
+  }
+
 };
 
 // #include "rclcpp_components/register_node_macro.hpp"
@@ -258,16 +339,11 @@ int main(int argc, char * argv[])
   setvbuf(stdout, NULL, _IONBF, BUFSIZ);
 
   rclcpp::init(argc, argv);
-
   rclcpp::executors::SingleThreadedExecutor exe;
-
   std::shared_ptr<FrontierExplorationNode> lc_node =
     std::make_shared<FrontierExplorationNode>();
-
   exe.add_node(lc_node->get_node_base_interface());
-
   exe.spin();
-
   rclcpp::shutdown();
 
   return 0;
