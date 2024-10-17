@@ -1,10 +1,11 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, EmitEvent, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, RegisterEventHandler, EmitEvent, OpaqueFunction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import LifecycleNode
+from launch_ros.event_handlers import OnStateTransition
 from launch_ros.events.lifecycle import ChangeState
 from lifecycle_msgs.msg import Transition
 
@@ -32,6 +33,14 @@ def generate_launch_description():
     nav2_params_file = os.path.join(
         package_share_dir, 'config', 'nav2_params.yaml')
 
+    # # Include Nav2 launch description
+    # nav2_launch = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource(
+    #         os.path.join(nav2_bringup_dir, 'launch', 'navigation_launch.py')
+    #     ),
+    #     launch_arguments={'use_sim_time': LaunchConfiguration(
+    #         'use_sim_time')}.items(),
+    # )
     # Function to conditionally include the params file if use_sim_time is false
     def include_nav2_with_params(context):
         use_sim_time = LaunchConfiguration('use_sim_time').perform(context)
@@ -63,19 +72,19 @@ def generate_launch_description():
         namespace=''
     )
 
-    # Emit event to configure the frontier node after launch
-    configure_frontier_node = EmitEvent(
-        event=ChangeState(
-            lifecycle_node_matcher=frontier_node,
-            transition_id=Transition.TRANSITION_CONFIGURE
-        )
-    )
-
-    # Emit event to activate the frontier node after configuration
-    activate_frontier_node = EmitEvent(
-        event=ChangeState(
-            lifecycle_node_matcher=frontier_node,
-            transition_id=Transition.TRANSITION_ACTIVATE
+    # Event handler to activate the frontier node after Nav2 becomes active
+    frontier_activation_event_handler = RegisterEventHandler(
+        OnStateTransition(
+            target_lifecycle_node=frontier_node,  # Frontier node is the lifecycle node
+            goal_state='configured',  # Transition to 'active' when Nav2 becomes active
+            entities=[
+                EmitEvent(
+                    event=ChangeState(
+                        lifecycle_node_matcher=frontier_node,
+                        transition_id=Transition.TRANSITION_CONFIGURE
+                    )
+                )
+            ]
         )
     )
 
@@ -90,9 +99,6 @@ def generate_launch_description():
         # Launch frontier node
         frontier_node,
 
-        # Configure the frontier node after Nav2 launch
-        configure_frontier_node,
-
-        # Activate the frontier node after configuration
-        activate_frontier_node,
+        # Event handler to start the frontier node after Nav2 is active
+        frontier_activation_event_handler,
     ])

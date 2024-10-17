@@ -8,6 +8,7 @@
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
 #include <rcl_interfaces/msg/parameter_descriptor.hpp>
 #include <nav2_util/lifecycle_node.hpp>
+#include "lifecycle_msgs/msg/state.hpp"
 #include <cmath>
 #include <vector>
 #include <algorithm>
