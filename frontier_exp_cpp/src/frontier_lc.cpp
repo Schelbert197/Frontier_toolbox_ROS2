@@ -9,6 +9,7 @@
 #include <rcl_interfaces/msg/parameter_descriptor.hpp>
 #include <nav2_util/lifecycle_node.hpp>
 #include "lifecycle_msgs/msg/state.hpp"
+#include <lifecycle_msgs/srv/get_state.hpp>
 #include <cmath>
 #include <vector>
 #include <algorithm>
@@ -25,10 +26,20 @@ public:
     // declare_parameter("use_sim_time", false);
     is_sim_ = get_parameter("use_sim_time").as_bool();
 
-
     // Store frontiers and map information
     declare_parameter("viewpoint_depth", 1.0);
     viewpoint_depth_ = get_parameter("viewpoint_depth").as_double();
+
+    // Trigger configuration during node startup
+    auto current_state = this->get_current_state();
+    if (current_state.id() == lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED) {
+      this->configure();
+    }
+
+    // Start a timer to periodically check the state of the other lifecycle node
+    // timer_ = this->create_wall_timer(
+    //   std::chrono::seconds(1),
+    //   std::bind(&FrontierExplorationNode::check_nav2_state, this));
   }
 
   // Lifecycle transition callbacks
@@ -76,6 +87,45 @@ public:
     return nav2_util::CallbackReturn::SUCCESS;
   }
 
+// protected:
+//   // Function to query the state of another lifecycle node (e.g., Nav2)
+//   void check_nav2_state()
+//   {
+//     // Create a client to query the state of the "nav2_controller" node
+//     auto client = this->create_client<lifecycle_msgs::srv::GetState>("/controller_server/get_state");
+
+//     // Wait for the service to be available
+//     if (!client->wait_for_service(std::chrono::seconds(2))) {
+//       RCLCPP_WARN(this->get_logger(), "Waiting for /controller_server/get_state service...");
+//       return;
+//     }
+
+//     // Create a request to get the state
+//     auto request = std::make_shared<lifecycle_msgs::srv::GetState::Request>();
+
+//     // Call the service asynchronously
+//     auto future = client->async_send_request(request);
+
+//     // Wait for the result
+//     if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), future) ==
+//       rclcpp::FutureReturnCode::SUCCESS)
+//     {
+//       auto response = future.get();
+
+//       // Check the state of the Nav2 controller
+//       int8_t state = response->current_state.id;
+//       if (state == lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE) {
+//         RCLCPP_INFO(this->get_logger(), "Nav2 is ACTIVE, transitioning to active...");
+//         // Transition to the active state if needed
+//         this->activate();
+//       } else {
+//         RCLCPP_INFO(this->get_logger(), "Nav2 is not ACTIVE, remaining in current state.");
+//       }
+//     } else {
+//       RCLCPP_ERROR(this->get_logger(), "Failed to call /nav2_controller/get_state service");
+//     }
+//   }
+
 private:
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_subscriber_;
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::PoseStamped>>
@@ -94,6 +144,18 @@ private:
 
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_;
+  rclcpp::TimerBase::SharedPtr timer_;
+
+  void activation_callback()
+  {
+    // stuff
+    auto current_state = this->get_current_state();
+
+    if (current_state.id() == lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE) {
+      RCLCPP_INFO(get_logger(), "Callback is present. Triggering activation.");
+      this->activate();
+    }
+  }
 
   void mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg)
   {
@@ -205,7 +267,7 @@ private:
     }
 
     std::pair<int, int> goal_frontier;
-    if (use_naive == true){
+    if (use_naive == true) {
       goal_frontier = *std::min_element(
         frontiers_.begin(), frontiers_.end(), [this](const auto & f1, const auto & f2)
         {
@@ -298,7 +360,8 @@ private:
     return unknown_count;
   }
 
-  std::pair<int, int> bestScoreFrontier() {
+  std::pair<int, int> bestScoreFrontier()
+  {
 
     int best_score = 0;
     int best_frontier_idx;
@@ -314,7 +377,7 @@ private:
     // }
     // Loop through all frontiers and get score
     for (size_t i = 0; i < frontiers_.size(); ++i) {
-      const auto &frontier = frontiers_.at(i);
+      const auto & frontier = frontiers_.at(i);
       int idx = frontier.second * map_data_.info.width + frontier.first;
       int frontier_score = countUnknownCellsWithinRadius(idx, radius_);
 
