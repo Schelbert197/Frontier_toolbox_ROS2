@@ -187,8 +187,7 @@ private:
 
       // Use setRPY to get yaw
       double roll, pitch, yaw;
-      tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);// check whether this works correctly
-      RCLCPP_INFO(get_logger(), "Current Yaw: %f", yaw);
+      tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
 
       // Adjust x and y based on the viewpoint depth
       double x_adj = x + std::cos(yaw) * viewpoint_depth_;
@@ -321,8 +320,8 @@ private:
     int unknown_count = 0;
 
     // Get map metadata
-    int width = map_data_.info.width;
-    int height = map_data_.info.height;
+    int width = static_cast<int>(map_data_.info.width);
+    int height = static_cast<int>(map_data_.info.height);
     double resolution = map_data_.info.resolution;
 
     // Calculate the center cell's row and column from the index
@@ -350,7 +349,7 @@ private:
           int cell_index = row * width + col;
 
           // Check if the cell is unknown (-1)
-          if (map_data_.data[cell_index] == -1) {
+          if (map_data_.data[cell_index] == -1 && !occluded(col, row, center_col, center_row, width, height, map_data_.data)) {
             unknown_count++;
           }
         }
@@ -362,33 +361,86 @@ private:
 
   std::pair<int, int> bestScoreFrontier()
   {
-
-    int best_score = 0;
+    // int best_score = 0;
     int best_frontier_idx;
+    double total_entropy = calculateMapEntropy();
+    double best_possible_entropy = total_entropy;
+    RCLCPP_INFO(get_logger(), "Total Map Entropy %f", total_entropy);
 
-    // // Loop through all frontiers and get score
-    // for (const auto & frontier : frontiers_) {
-    //   int idx = frontier.second * map_data_.info.width + frontier.first;
-    //   int frontier_score = countUnknownCellsWithinRadius(idx, radius_);
-    //   if (frontier_score > best_score) {
-    //     best_score = frontier_score;
-    //     best_frontier_idx = idx;
-    //   }
-    // }
     // Loop through all frontiers and get score
     for (size_t i = 0; i < frontiers_.size(); ++i) {
       const auto & frontier = frontiers_.at(i);
       int idx = frontier.second * map_data_.info.width + frontier.first;
       int frontier_score = countUnknownCellsWithinRadius(idx, radius_);
 
-      if (frontier_score > best_score) {
-        best_score = frontier_score;
+      // calculate current reduced entropy
+      double curr_red_entropy = total_entropy - (frontier_score * calculateEntropy(-1));
+
+      // if (frontier_score > best_score) {
+      //   best_score = frontier_score;
+      //   best_frontier_idx = i;  // Set to the index in frontiers_ instead of idx
+      // }
+      if (curr_red_entropy < best_possible_entropy) {
+        best_possible_entropy = curr_red_entropy;
         best_frontier_idx = i;  // Set to the index in frontiers_ instead of idx
       }
     }
     RCLCPP_INFO(
-      get_logger(), "Selecting frontier %d, with score %d", best_frontier_idx, best_score);
+      get_logger(), "Selecting frontier %d, with entropy reduction %f", best_frontier_idx,
+      best_possible_entropy);
     return frontiers_.at(best_frontier_idx);
+  }
+
+  double calculateMapEntropy()
+  {
+    double entropy;
+    for (const auto & cell : map_data_.data) {
+      entropy += calculateEntropy(cell);
+    }
+    return entropy;
+  }
+
+  double calculateEntropy(int cell_value)
+  {
+    double v;
+    if (cell_value == -1) {
+      v = 0.5;
+    } else if (cell_value == 0) {
+      v = 0.01;
+    } else if (cell_value == 100) {
+      v = 0.99;
+    }
+    return -1 * ((v * log(v)) + ((1 - v) * log(1 - v)));
+  }
+
+  bool occluded(int x1, int y1, int x2, int y2, int width, const std::vector<int8_t> &map_data)
+  {
+    // Bresenham's line algorithm to generate points between (x1, y1) and (x2, y2)
+    int dx = abs(x2 - x1);
+    int dy = abs(y2 - y1);
+    int sx = (x1 < x2) ? 1 : -1;
+    int sy = (y1 < y2) ? 1 : -1;
+    int err = dx - dy;
+
+    while (x1 != x2 || y1 != y2) {
+      // Check if the current cell is occupied (value 100 means occupied)
+      int cell_index = y1 * width + x1;
+      if (map_data[cell_index] == 100) {
+        return true;  // There is an occupied cell between the two points
+      }
+
+      int e2 = 2 * err;
+      if (e2 > -dy) {
+        err -= dy;
+        x1 += sx;
+      }
+      if (e2 < dx) {
+        err += dx;
+        y1 += sy;
+      }
+    }
+
+    return false;  // No occupied cells found between the two points
   }
 
 };
