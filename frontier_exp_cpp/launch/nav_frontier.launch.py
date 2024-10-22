@@ -29,8 +29,10 @@ def generate_launch_description():
 
     # Get the path to the nav2_params.yaml in your package's launch folder
     package_share_dir = get_package_share_directory('frontier_exp_cpp')
-    nav2_params_file = os.path.join(
-        package_share_dir, 'config', 'nav2_params.yaml')
+    nav2_params_file_robot = os.path.join(
+        package_share_dir, 'config', 'nav2_params_robot.yaml')
+    nav2_params_file_sim = os.path.join(
+        package_share_dir, 'config', 'nav2_params_sim.yaml')
 
     # Function to conditionally include the params file if use_sim_time is false
     def include_nav2_with_params(context):
@@ -41,7 +43,12 @@ def generate_launch_description():
         if use_sim_time == 'false':
             nav2_launch_arguments = {
                 'use_sim_time': use_sim_time,
-                'params_file': nav2_params_file
+                'params_file': nav2_params_file_robot
+            }.items()
+        else:
+            nav2_launch_arguments = {
+                'use_sim_time': use_sim_time,
+                'params_file': nav2_params_file_sim
             }.items()
 
         return [IncludeLaunchDescription(
@@ -63,22 +70,6 @@ def generate_launch_description():
         namespace=''
     )
 
-    # Emit event to configure the frontier node after launch
-    configure_frontier_node = EmitEvent(
-        event=ChangeState(
-            lifecycle_node_matcher=frontier_node,
-            transition_id=Transition.TRANSITION_CONFIGURE
-        )
-    )
-
-    # Emit event to activate the frontier node after configuration
-    activate_frontier_node = EmitEvent(
-        event=ChangeState(
-            lifecycle_node_matcher=frontier_node,
-            transition_id=Transition.TRANSITION_ACTIVATE
-        )
-    )
-
     return LaunchDescription([
         # Declare sim_time and viewpoint depth arguments
         use_sim_time_arg,
@@ -89,10 +80,4 @@ def generate_launch_description():
 
         # Launch frontier node
         frontier_node,
-
-        # Configure the frontier node after Nav2 launch
-        configure_frontier_node,
-
-        # Activate the frontier node after configuration
-        activate_frontier_node,
     ])

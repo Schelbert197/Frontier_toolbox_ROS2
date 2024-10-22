@@ -140,7 +140,7 @@ private:
   double viewpoint_depth_;
   bool is_sim_;
   double radius_ = 2.5;
-  bool use_naive = false;
+  bool use_naive_ = false;
 
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_;
@@ -189,6 +189,10 @@ private:
       double roll, pitch, yaw;
       tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
 
+      if (use_naive_ == false) {
+        // Make VP 0 to allow DTR calculations later
+        viewpoint_depth_ = 0.0;
+      }
       // Adjust x and y based on the viewpoint depth
       double x_adj = x + std::cos(yaw) * viewpoint_depth_;
       double y_adj = y + std::sin(yaw) * viewpoint_depth_;
@@ -251,11 +255,16 @@ private:
 
     for (const auto & frontier : frontiers_) {
       int idx = frontier.second * map_data_.info.width + frontier.first;
-      if (data[idx] == -1 && hasFreeNeighbor(frontier.first, frontier.second)) {
+      if (data[idx] == -1 && hasFreeNeighbor(frontier.first, frontier.second) && !tooClose(frontier)) {
         valid_frontiers.push_back(frontier);
       }
     }
     frontiers_ = valid_frontiers;
+  }
+
+  bool tooClose(const std::pair<int, int> & frontier) 
+  {
+    return distanceToRobot(frontier) <= 0.25;
   }
 
   void publishGoalFrontier()
@@ -266,7 +275,7 @@ private:
     }
 
     std::pair<int, int> goal_frontier;
-    if (use_naive == true) {
+    if (use_naive_ == true) {
       goal_frontier = *std::min_element(
         frontiers_.begin(), frontiers_.end(), [this](const auto & f1, const auto & f2)
         {
@@ -349,7 +358,7 @@ private:
           int cell_index = row * width + col;
 
           // Check if the cell is unknown (-1)
-          if (map_data_.data[cell_index] == -1 && !occluded(col, row, center_col, center_row, width, height, map_data_.data)) {
+          if (map_data_.data[cell_index] == -1 && !occluded(col, row, center_col, center_row, width, map_data_.data)) {
             unknown_count++;
           }
         }
