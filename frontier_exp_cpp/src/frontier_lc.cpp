@@ -36,10 +36,6 @@ public:
       this->configure();
     }
 
-    // Start a timer to periodically check the state of the other lifecycle node
-    // timer_ = this->create_wall_timer(
-    //   std::chrono::seconds(1),
-    //   std::bind(&FrontierExplorationNode::check_nav2_state, this));
   }
 
   // Lifecycle transition callbacks
@@ -86,45 +82,6 @@ public:
     RCLCPP_INFO(get_logger(), "Shutting down...");
     return nav2_util::CallbackReturn::SUCCESS;
   }
-
-// protected:
-//   // Function to query the state of another lifecycle node (e.g., Nav2)
-//   void check_nav2_state()
-//   {
-//     // Create a client to query the state of the "nav2_controller" node
-//     auto client = this->create_client<lifecycle_msgs::srv::GetState>("/controller_server/get_state");
-
-//     // Wait for the service to be available
-//     if (!client->wait_for_service(std::chrono::seconds(2))) {
-//       RCLCPP_WARN(this->get_logger(), "Waiting for /controller_server/get_state service...");
-//       return;
-//     }
-
-//     // Create a request to get the state
-//     auto request = std::make_shared<lifecycle_msgs::srv::GetState::Request>();
-
-//     // Call the service asynchronously
-//     auto future = client->async_send_request(request);
-
-//     // Wait for the result
-//     if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), future) ==
-//       rclcpp::FutureReturnCode::SUCCESS)
-//     {
-//       auto response = future.get();
-
-//       // Check the state of the Nav2 controller
-//       int8_t state = response->current_state.id;
-//       if (state == lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE) {
-//         RCLCPP_INFO(this->get_logger(), "Nav2 is ACTIVE, transitioning to active...");
-//         // Transition to the active state if needed
-//         this->activate();
-//       } else {
-//         RCLCPP_INFO(this->get_logger(), "Nav2 is not ACTIVE, remaining in current state.");
-//       }
-//     } else {
-//       RCLCPP_ERROR(this->get_logger(), "Failed to call /nav2_controller/get_state service");
-//     }
-//   }
 
 private:
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_subscriber_;
@@ -255,14 +212,16 @@ private:
 
     for (const auto & frontier : frontiers_) {
       int idx = frontier.second * map_data_.info.width + frontier.first;
-      if (data[idx] == -1 && hasFreeNeighbor(frontier.first, frontier.second) && !tooClose(frontier)) {
+      if (data[idx] == -1 &&
+        hasFreeNeighbor(frontier.first, frontier.second) && !tooClose(frontier))
+      {
         valid_frontiers.push_back(frontier);
       }
     }
     frontiers_ = valid_frontiers;
   }
 
-  bool tooClose(const std::pair<int, int> & frontier) 
+  bool tooClose(const std::pair<int, int> & frontier)
   {
     return distanceToRobot(frontier) <= 0.25;
   }
@@ -358,7 +317,9 @@ private:
           int cell_index = row * width + col;
 
           // Check if the cell is unknown (-1)
-          if (map_data_.data[cell_index] == -1 && !occluded(col, row, center_col, center_row, width, map_data_.data)) {
+          if (map_data_.data[cell_index] == -1 &&
+            !occluded(col, row, center_col, center_row, width, map_data_.data))
+          {
             unknown_count++;
           }
         }
@@ -422,7 +383,7 @@ private:
     return -1 * ((v * log(v)) + ((1 - v) * log(1 - v)));
   }
 
-  bool occluded(int x1, int y1, int x2, int y2, int width, const std::vector<int8_t> &map_data)
+  bool occluded(int x1, int y1, int x2, int y2, int width, const std::vector<int8_t> & map_data)
   {
     // Bresenham's line algorithm to generate points between (x1, y1) and (x2, y2)
     int dx = abs(x2 - x1);
