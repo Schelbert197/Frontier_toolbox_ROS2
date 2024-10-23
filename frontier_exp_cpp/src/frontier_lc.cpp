@@ -1,5 +1,6 @@
 #include <rclcpp/rclcpp.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
+#include "nav_msgs/srv/get_plan.hpp"
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
@@ -30,12 +31,14 @@ public:
     declare_parameter("viewpoint_depth", 1.0);
     viewpoint_depth_ = get_parameter("viewpoint_depth").as_double();
 
+    // Create callback group for path client
+    path_client_cb_group_ = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+
     // Trigger configuration during node startup
     auto current_state = this->get_current_state();
     if (current_state.id() == lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED) {
       this->configure();
     }
-
   }
 
   // Lifecycle transition callbacks
@@ -51,6 +54,15 @@ public:
     map_with_frontiers_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
       "/map_with_frontiers",
       10);
+
+    // Create a path planner client
+    path_client_ = this->create_client<nav_msgs::srv::GetPlan>(
+      "planner_server/get_plan", rmw_qos_profile_services_default,
+      path_client_cb_group_);
+
+    while (!path_client_->wait_for_service(std::chrono::seconds(1))) {
+      RCLCPP_INFO(this->get_logger(), "Waiting for Nav2 planner service...");
+    }
     return nav2_util::CallbackReturn::SUCCESS;
   }
 
@@ -89,6 +101,8 @@ private:
   goal_publisher_;
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::OccupancyGrid>>
   map_with_frontiers_pub_;
+  rclcpp::CallbackGroup::SharedPtr path_client_cb_group_;
+  rclcpp::Client<nav_msgs::srv::GetPlan>::SharedPtr path_client_;
 
   nav_msgs::msg::OccupancyGrid map_data_;
   std::vector<std::pair<int, int>> frontiers_;
@@ -224,6 +238,32 @@ private:
   bool tooClose(const std::pair<int, int> & frontier)
   {
     return distanceToRobot(frontier) <= 0.25;
+  }
+
+  bool check_path(
+    const geometry_msgs::msg::PoseStamped & start_pose,
+    const geometry_msgs::msg::PoseStamped & goal_pose)
+  {
+    auto request = std::make_shared<nav_msgs::srv::GetPlan::Request>();
+    request->start = start_pose;
+    request->goal = goal_pose;
+    request->tolerance = 0.25;
+
+    auto result = client_->async_send_request(request);
+    if (rclcpp::spin_until_future_complete(this, result) == rclcpp::FutureReturnCode::SUCCESS) {
+      if (!result.get()->plan.poses.empty()) {
+        RCLCPP_INFO(
+          this->get_logger(), "Valid path found with %ld points.",
+          result.get()->plan.poses.size());
+        return true;
+      } else {
+        RCLCPP_WARN(this->get_logger(), "No valid path found.");
+        return false;
+      }
+    } else {
+      RCLCPP_ERROR(this->get_logger(), "Failed to call the planner service.");
+      return false;
+    }
   }
 
   void publishGoalFrontier()
