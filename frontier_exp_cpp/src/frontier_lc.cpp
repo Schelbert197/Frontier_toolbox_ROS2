@@ -303,6 +303,8 @@ private:
       auto goal_pose = std::make_shared<nav_client_cpp::srv::NavToPose::Request>();
       std::tie(goal_pose->x, goal_pose->y) = cellToWorld(goal_frontier);
       goal_pose->theta = 0.0;
+      RCLCPP_INFO(
+        get_logger(), "Publishing goal at %f, %f", goal_pose->x, goal_pose->y);
       auto future_result = nav_to_pose_client_->async_send_request(goal_pose);
     }
   }

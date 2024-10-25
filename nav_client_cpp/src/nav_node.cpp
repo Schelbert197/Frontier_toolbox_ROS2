@@ -147,7 +147,7 @@ private:
     if (feedback_) {
       auto [roll, pitch, yaw] = quaternion_to_rpy(feedback_->current_pose.pose.orientation);
 
-      RCLCPP_INFO_STREAM(get_logger(), "x = " << feedback_->current_pose.pose.position.x
+      RCLCPP_DEBUG_STREAM(get_logger(), "x = " << feedback_->current_pose.pose.position.x
                                   << ", y = " << feedback_->current_pose.pose.position.y
                                   << ", theta = " << yaw
       );

@@ -1,12 +1,10 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, EmitEvent, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import LifecycleNode
-from launch_ros.events.lifecycle import ChangeState
-from lifecycle_msgs.msg import Transition
+from launch_ros.actions import LifecycleNode, Node
 
 
 def generate_launch_description():
@@ -70,6 +68,12 @@ def generate_launch_description():
         namespace=''
     )
 
+    nav2_client_node = Node(
+        package='nav_client_cpp',
+        executable='nav_node',
+        name='nav_to_pose',
+        output='screen')
+
     return LaunchDescription([
         # Declare sim_time and viewpoint depth arguments
         use_sim_time_arg,
@@ -77,6 +81,9 @@ def generate_launch_description():
 
         # Conditionally launch Nav2 with or without params file
         OpaqueFunction(function=include_nav2_with_params),
+
+        # Launch nav2 client node
+        nav2_client_node,
 
         # Launch frontier node
         frontier_node,
