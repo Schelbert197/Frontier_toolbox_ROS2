@@ -1,7 +1,7 @@
 #include <rclcpp/rclcpp.hpp>
-#include "rclcpp_action/rclcpp_action.hpp"
 #include <nav_msgs/msg/occupancy_grid.hpp>
-#include "nav2_msgs/action/compute_path_to_pose.hpp"
+#include "std_srvs/srv/empty.hpp"
+#include "nav_client_cpp/srv/nav_to_pose.hpp"
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
@@ -34,8 +34,15 @@ public:
     declare_parameter("viewpoint_depth", 1.0);
     viewpoint_depth_ = get_parameter("viewpoint_depth").as_double();
 
-    // Create callback group for path client
-    path_client_cb_group_ = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+    // Create separate callback groups for each service client
+    nav_to_pose_callback_group_ = this->create_callback_group(
+      rclcpp::CallbackGroupType::MutuallyExclusive);
+    cancel_nav_callback_group_ = this->create_callback_group(
+      rclcpp::CallbackGroupType::MutuallyExclusive);
+
+    // Initialize service clients as null, to be created in on_configure()
+    nav_to_pose_client_ = nullptr;
+    cancel_nav_client_ = nullptr;
 
     // Trigger configuration during node startup
     auto current_state = this->get_current_state();
@@ -66,20 +73,12 @@ public:
     goal_publisher_->on_activate();
     map_with_frontiers_pub_->on_activate();
 
-    // Create a path planner action client
-    path_client_ = rclcpp_action::create_client<nav2_msgs::action::ComputePathToPose>(
-      this, "compute_path_to_pose");
+    // Create the service clients in on_activate
+    nav_to_pose_client_ = this->create_client<nav_client_cpp::srv::NavToPose>(
+      "jackal_nav_to_pose", rmw_qos_profile_services_default, nav_to_pose_callback_group_);
 
-    // Wait for the action server to be available
-    while (!path_client_->wait_for_action_server(std::chrono::seconds(1))) {
-      // Check if ROS is still running (allowing for graceful shutdown with Ctrl+C)
-      if (!rclcpp::ok()) {
-        RCLCPP_INFO(this->get_logger(), "Shutting down node...");
-        return nav2_util::CallbackReturn::FAILURE;
-      }
-
-      RCLCPP_INFO(this->get_logger(), "Waiting for Nav2 ComputePathToPose action server...");
-    }
+    cancel_nav_client_ = this->create_client<std_srvs::srv::Empty>(
+      "jackal_cancel_nav", rmw_qos_profile_services_default, cancel_nav_callback_group_);
     return nav2_util::CallbackReturn::SUCCESS;
   }
 
@@ -88,7 +87,9 @@ public:
     RCLCPP_INFO(get_logger(), "Deactivating...");
     goal_publisher_->on_deactivate();
     map_with_frontiers_pub_->on_deactivate();
-    path_client_.reset();
+    // Reset navigation clients
+    nav_to_pose_client_.reset();
+    cancel_nav_client_.reset();
     return nav2_util::CallbackReturn::SUCCESS;
   }
 
@@ -96,6 +97,9 @@ public:
   {
     RCLCPP_INFO(get_logger(), "Cleaning up...");
     map_subscriber_.reset();
+    // Reset navigation clients for secure cleanup
+    nav_to_pose_client_.reset();
+    cancel_nav_client_.reset();
     return nav2_util::CallbackReturn::SUCCESS;
   }
 
@@ -112,10 +116,15 @@ private:
   goal_publisher_;
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::OccupancyGrid>>
   map_with_frontiers_pub_;
-  // Declare the action client and callback group
-  rclcpp_action::Client<nav2_msgs::action::ComputePathToPose>::SharedPtr path_client_;
-  rclcpp::CallbackGroup::SharedPtr path_client_cb_group_;
 
+  // Services for action node
+  rclcpp::CallbackGroup::SharedPtr nav_to_pose_callback_group_;
+  rclcpp::CallbackGroup::SharedPtr cancel_nav_callback_group_;
+
+  rclcpp::Client<nav_client_cpp::srv::NavToPose>::SharedPtr nav_to_pose_client_;
+  rclcpp::Client<std_srvs::srv::Empty>::SharedPtr cancel_nav_client_;
+
+  // Data objects
   nav_msgs::msg::OccupancyGrid map_data_;
   std::vector<std::pair<int, int>> frontiers_;
   std::pair<double, double> robot_position_;
@@ -125,7 +134,9 @@ private:
   double radius_ = 2.5;
   bool use_naive_ = false;
   bool path_valid_;
+  bool use_action_client_ = true;
 
+  // Buffer objects
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_;
   rclcpp::TimerBase::SharedPtr timer_;
@@ -157,7 +168,7 @@ private:
       publishGoalFrontier();
       publishMapWithFrontiers();
     } else {
-      RCLCPP_WARN(get_logger(), "Unable to determine robot's position.");
+      RCLCPP_WARN(get_logger(), "Node inactive or unable to determine robot's position.");
     }
   }
 
@@ -258,125 +269,6 @@ private:
   {
     return distanceToRobot(frontier) <= 0.25;
   }
-//########33
-  bool check_path(
-    const geometry_msgs::msg::PoseStamped & start,
-    const geometry_msgs::msg::PoseStamped & goal)
-  {
-    // Ensure that the node is in the active state
-    if (this->get_current_state().id() != lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE) {
-      RCLCPP_WARN(this->get_logger(), "Node is not active, cannot send goal to ComputePathToPose.");
-      return false;
-    }
-
-    // Create the goal request
-    auto goal_msg = nav2_msgs::action::ComputePathToPose::Goal();
-    goal_msg.start = start;  // Start PoseStamped
-    goal_msg.goal.pose = goal.pose;  // Goal PoseStamped
-
-    // Asynchronously send the goal and setup a callback to handle the result
-    auto send_goal_options =
-      rclcpp_action::Client<nav2_msgs::action::ComputePathToPose>::SendGoalOptions();
-
-    // Callback when the goal is accepted
-    send_goal_options.goal_response_callback =
-      [this](std::shared_ptr<rclcpp_action::ClientGoalHandle<nav2_msgs::action::ComputePathToPose>>
-        goal_handle)
-      {
-        if (!goal_handle) {
-          RCLCPP_ERROR(this->get_logger(), "Goal was rejected by ComputePathToPose.");
-          return;
-        }
-
-        RCLCPP_INFO(this->get_logger(), "Goal accepted, waiting for result...");
-
-        // Asynchronously get the result
-        auto result_future = path_client_->async_get_result(goal_handle);
-
-        result_future.wait(); // Wait for the result
-        if (result_future.valid()) {
-          auto result = result_future.get();
-          if (rclcpp::Duration(result.result->planning_time).seconds() > 0.0) {
-            RCLCPP_INFO(
-              this->get_logger(), "Path found in %f seconds",
-              rclcpp::Duration(result.result->planning_time).seconds());
-
-            // Path is valid, return true here
-            path_valid_ = true; // You can use a member variable to hold this
-          } else {
-            RCLCPP_INFO(this->get_logger(), "No valid path found.");
-            path_valid_ = false;
-          }
-        } else {
-          RCLCPP_ERROR(this->get_logger(), "Failed to get result from ComputePathToPose.");
-          path_valid_ = false;
-        }
-      };
-
-    // Send the goal asynchronously
-    path_client_->async_send_goal(goal_msg, send_goal_options);
-
-    // Return whether the path is valid or not
-    return path_valid_; // Return the stored result
-  }
-
-//#######
-// bool check_path(
-//   const geometry_msgs::msg::PoseStamped & start,
-//   const geometry_msgs::msg::PoseStamped & goal)
-// {
-//   // Ensure that the node is in the active state
-//   if (this->get_current_state().id() != lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE) {
-//     RCLCPP_WARN(this->get_logger(), "Node is not active, cannot send goal to ComputePathToPose.");
-//     return false;
-//   }
-
-  //   // Create the goal request
-  //   auto goal_msg = nav2_msgs::action::ComputePathToPose::Goal();
-  //   goal_msg.start = start;    // Start PoseStamped
-  //   goal_msg.goal.pose = goal.pose;    // Goal PoseStamped
-
-  //   RCLCPP_INFO(this->get_logger(), "About to send goal");
-  //   // Send goal and wait for result
-  //   auto goal_handle_future = path_client_->async_send_goal(goal_msg);
-  //   RCLCPP_INFO(this->get_logger(), "Goal sent");
-
-  //   // Wait for the result
-  //   if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), goal_handle_future) !=
-  //     rclcpp::FutureReturnCode::SUCCESS)
-  //   {
-  //     RCLCPP_ERROR(this->get_logger(), "Failed to send goal to ComputePathToPose.");
-  //     return false;
-  //   }
-
-  //   RCLCPP_INFO(this->get_logger(), "Spinning to send goal");
-
-  //   auto goal_handle = goal_handle_future.get();
-  //   if (!goal_handle) {
-  //     RCLCPP_ERROR(this->get_logger(), "Goal was rejected by ComputePathToPose.");
-  //     return false;
-  //   }
-
-  //   // Get the result
-  //   auto result_future = path_client_->async_get_result(goal_handle);
-  //   if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), result_future) !=
-  //     rclcpp::FutureReturnCode::SUCCESS)
-  //   {
-  //     RCLCPP_ERROR(this->get_logger(), "Failed to get result from ComputePathToPose.");
-  //     return false;
-  //   }
-
-  //   auto result = result_future.get();
-  //   if (rclcpp::Duration(result.result->planning_time).seconds() > 0.0) {
-  //     RCLCPP_INFO(
-  //       this->get_logger(), "Path found in %f seconds",
-  //       rclcpp::Duration(result.result->planning_time).seconds());
-  //     return true;
-  //   } else {
-  //     RCLCPP_INFO(this->get_logger(), "No valid path found.");
-  //     return false;
-  //   }
-  // }
 
   void publishGoalFrontier()
   {
@@ -396,16 +288,23 @@ private:
       goal_frontier = bestScoreFrontier();
     }
 
-    geometry_msgs::msg::PoseStamped goal_pose;
-    goal_pose.header.frame_id = "map";
-    std::tie(goal_pose.pose.position.x, goal_pose.pose.position.y) = cellToWorld(goal_frontier);
-    goal_pose.pose.position.z = 0.0;
-    goal_pose.pose.orientation.w = 1.0;
+    if (!use_action_client_) {
+      geometry_msgs::msg::PoseStamped goal_pose;
+      goal_pose.header.frame_id = "map";
+      std::tie(goal_pose.pose.position.x, goal_pose.pose.position.y) = cellToWorld(goal_frontier);
+      goal_pose.pose.position.z = 0.0;
+      goal_pose.pose.orientation.w = 1.0;
 
-    goal_publisher_->publish(goal_pose);
-    RCLCPP_INFO(
-      get_logger(), "Publishing goal at %f, %f", goal_pose.pose.position.x,
-      goal_pose.pose.position.y);
+      goal_publisher_->publish(goal_pose);
+      RCLCPP_INFO(
+        get_logger(), "Publishing goal at %f, %f", goal_pose.pose.position.x,
+        goal_pose.pose.position.y);
+    } else {
+      auto goal_pose = std::make_shared<nav_client_cpp::srv::NavToPose::Request>();
+      std::tie(goal_pose->x, goal_pose->y) = cellToWorld(goal_frontier);
+      goal_pose->theta = 0.0;
+      auto future_result = nav_to_pose_client_->async_send_request(goal_pose);
+    }
   }
 
   void publishMapWithFrontiers()
@@ -505,18 +404,6 @@ private:
     auto min_iterator = std::min_element(entropies.begin(), entropies.end());
     best_possible_entropy = *min_iterator;
     best_frontier_idx = std::distance(entropies.begin(), min_iterator);
-
-    geometry_msgs::msg::PoseStamped start_pose;
-    geometry_msgs::msg::PoseStamped goal_pose;
-
-    std::tie(
-      goal_pose.pose.position.x,
-      goal_pose.pose.position.y) = cellToWorld(frontiers_.at(best_frontier_idx));
-    start_pose.pose.position.x = robot_position_.first;
-    start_pose.pose.position.y = robot_position_.second;
-
-    bool path_valid = check_path(start_pose, goal_pose);
-    RCLCPP_INFO(this->get_logger(), "Path valid: %s", path_valid ? "true" : "false");
 
     RCLCPP_INFO(
       get_logger(), "Selecting frontier %d, with entropy reduction %f", best_frontier_idx,

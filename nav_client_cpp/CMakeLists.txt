@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(frontier_exp_cpp)
+project(nav_client_cpp)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -8,36 +8,40 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(rclcpp_lifecycle REQUIRED)
-find_package(nav2_util REQUIRED)
-find_package(nav_msgs REQUIRED)
+find_package(rclcpp_action REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
-find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
-find_package(std_srvs REQUIRED)
-find_package(nav_client_cpp REQUIRED)
+find_package(nav2_msgs REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
+ament_export_dependencies(rosidl_default_runtime)
 
-add_executable(frontier_lc src/frontier_lc.cpp)
-ament_target_dependencies(frontier_lc 
-rclcpp 
-rclcpp_lifecycle
-nav2_util
-nav_msgs 
-geometry_msgs 
-tf2 
-tf2_ros 
-tf2_geometry_msgs
-std_srvs
-nav_client_cpp)
+rosidl_generate_interfaces(
+  ${PROJECT_NAME}_srv
+  "srv/NavToPose.srv"
+  LIBRARY_NAME ${PROJECT_NAME}
+  DEPENDENCIES
+  geometry_msgs
+)
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME}_srv "rosidl_typesupport_cpp")
 
-target_include_directories(frontier_lc PUBLIC
+add_executable(nav_node src/nav_node.cpp)
+ament_target_dependencies(nav_node
+  rclcpp rclcpp_action std_srvs geometry_msgs tf2 tf2_geometry_msgs nav2_msgs)
+target_link_libraries(nav_node "${cpp_typesupport_target}")
+
+target_include_directories(nav_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
-target_compile_features(frontier_lc PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+target_compile_features(nav_node PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 
-install(TARGETS frontier_lc
+install(TARGETS nav_node
   DESTINATION lib/${PROJECT_NAME})
+
+# install(DIRECTORY
+#   launch 
+#   DESTINATION share/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -50,13 +54,5 @@ if(BUILD_TESTING)
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 endif()
-
-# Install launch files.
-install(DIRECTORY
-  config
-  launch
-  src
-  DESTINATION share/${PROJECT_NAME}
-)
 
 ament_package()
