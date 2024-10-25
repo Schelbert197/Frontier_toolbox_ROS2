@@ -124,6 +124,7 @@ private:
   bool is_sim_;
   double radius_ = 2.5;
   bool use_naive_ = false;
+  bool path_valid_;
 
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_;
@@ -257,7 +258,7 @@ private:
   {
     return distanceToRobot(frontier) <= 0.25;
   }
-
+//########33
   bool check_path(
     const geometry_msgs::msg::PoseStamped & start,
     const geometry_msgs::msg::PoseStamped & goal)
@@ -270,50 +271,112 @@ private:
 
     // Create the goal request
     auto goal_msg = nav2_msgs::action::ComputePathToPose::Goal();
-    goal_msg.start = start;    // Start PoseStamped
-    goal_msg.goal.pose = goal.pose;    // Goal PoseStamped
+    goal_msg.start = start;  // Start PoseStamped
+    goal_msg.goal.pose = goal.pose;  // Goal PoseStamped
 
-    RCLCPP_INFO(this->get_logger(), "About to send goal");
-    // Send goal and wait for result
-    auto goal_handle_future = path_client_->async_send_goal(goal_msg);
-    RCLCPP_INFO(this->get_logger(), "Goal sent");
+    // Asynchronously send the goal and setup a callback to handle the result
+    auto send_goal_options =
+      rclcpp_action::Client<nav2_msgs::action::ComputePathToPose>::SendGoalOptions();
 
-    // Wait for the result
-    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), goal_handle_future) !=
-      rclcpp::FutureReturnCode::SUCCESS)
-    {
-      RCLCPP_ERROR(this->get_logger(), "Failed to send goal to ComputePathToPose.");
-      return false;
-    }
+    // Callback when the goal is accepted
+    send_goal_options.goal_response_callback =
+      [this](std::shared_ptr<rclcpp_action::ClientGoalHandle<nav2_msgs::action::ComputePathToPose>>
+        goal_handle)
+      {
+        if (!goal_handle) {
+          RCLCPP_ERROR(this->get_logger(), "Goal was rejected by ComputePathToPose.");
+          return;
+        }
 
-    RCLCPP_INFO(this->get_logger(), "Spinning to send goal");
+        RCLCPP_INFO(this->get_logger(), "Goal accepted, waiting for result...");
 
-    auto goal_handle = goal_handle_future.get();
-    if (!goal_handle) {
-      RCLCPP_ERROR(this->get_logger(), "Goal was rejected by ComputePathToPose.");
-      return false;
-    }
+        // Asynchronously get the result
+        auto result_future = path_client_->async_get_result(goal_handle);
 
-    // Get the result
-    auto result_future = path_client_->async_get_result(goal_handle);
-    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), result_future) !=
-      rclcpp::FutureReturnCode::SUCCESS)
-    {
-      RCLCPP_ERROR(this->get_logger(), "Failed to get result from ComputePathToPose.");
-      return false;
-    }
+        result_future.wait(); // Wait for the result
+        if (result_future.valid()) {
+          auto result = result_future.get();
+          if (rclcpp::Duration(result.result->planning_time).seconds() > 0.0) {
+            RCLCPP_INFO(
+              this->get_logger(), "Path found in %f seconds",
+              rclcpp::Duration(result.result->planning_time).seconds());
 
-    auto result = result_future.get();
-    if (rclcpp::Duration(result.result->planning_time).seconds() > 0.0) {
-      RCLCPP_INFO(
-        this->get_logger(), "Path found in %f seconds",
-        rclcpp::Duration(result.result->planning_time).seconds());
-      return true;
-    } else {
-      RCLCPP_INFO(this->get_logger(), "No valid path found.");
-      return false;
-    }
+            // Path is valid, return true here
+            path_valid_ = true; // You can use a member variable to hold this
+          } else {
+            RCLCPP_INFO(this->get_logger(), "No valid path found.");
+            path_valid_ = false;
+          }
+        } else {
+          RCLCPP_ERROR(this->get_logger(), "Failed to get result from ComputePathToPose.");
+          path_valid_ = false;
+        }
+      };
+
+    // Send the goal asynchronously
+    path_client_->async_send_goal(goal_msg, send_goal_options);
+
+    // Return whether the path is valid or not
+    return path_valid_; // Return the stored result
   }
+
+//#######
+// bool check_path(
+//   const geometry_msgs::msg::PoseStamped & start,
+//   const geometry_msgs::msg::PoseStamped & goal)
+// {
+//   // Ensure that the node is in the active state
+//   if (this->get_current_state().id() != lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE) {
+//     RCLCPP_WARN(this->get_logger(), "Node is not active, cannot send goal to ComputePathToPose.");
+//     return false;
+//   }
+
+  //   // Create the goal request
+  //   auto goal_msg = nav2_msgs::action::ComputePathToPose::Goal();
+  //   goal_msg.start = start;    // Start PoseStamped
+  //   goal_msg.goal.pose = goal.pose;    // Goal PoseStamped
+
+  //   RCLCPP_INFO(this->get_logger(), "About to send goal");
+  //   // Send goal and wait for result
+  //   auto goal_handle_future = path_client_->async_send_goal(goal_msg);
+  //   RCLCPP_INFO(this->get_logger(), "Goal sent");
+
+  //   // Wait for the result
+  //   if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), goal_handle_future) !=
+  //     rclcpp::FutureReturnCode::SUCCESS)
+  //   {
+  //     RCLCPP_ERROR(this->get_logger(), "Failed to send goal to ComputePathToPose.");
+  //     return false;
+  //   }
+
+  //   RCLCPP_INFO(this->get_logger(), "Spinning to send goal");
+
+  //   auto goal_handle = goal_handle_future.get();
+  //   if (!goal_handle) {
+  //     RCLCPP_ERROR(this->get_logger(), "Goal was rejected by ComputePathToPose.");
+  //     return false;
+  //   }
+
+  //   // Get the result
+  //   auto result_future = path_client_->async_get_result(goal_handle);
+  //   if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), result_future) !=
+  //     rclcpp::FutureReturnCode::SUCCESS)
+  //   {
+  //     RCLCPP_ERROR(this->get_logger(), "Failed to get result from ComputePathToPose.");
+  //     return false;
+  //   }
+
+  //   auto result = result_future.get();
+  //   if (rclcpp::Duration(result.result->planning_time).seconds() > 0.0) {
+  //     RCLCPP_INFO(
+  //       this->get_logger(), "Path found in %f seconds",
+  //       rclcpp::Duration(result.result->planning_time).seconds());
+  //     return true;
+  //   } else {
+  //     RCLCPP_INFO(this->get_logger(), "No valid path found.");
+  //     return false;
+  //   }
+  // }
 
   void publishGoalFrontier()
   {
@@ -446,7 +509,9 @@ private:
     geometry_msgs::msg::PoseStamped start_pose;
     geometry_msgs::msg::PoseStamped goal_pose;
 
-    std::tie(goal_pose.pose.position.x, goal_pose.pose.position.y) = cellToWorld(frontiers_.at(best_frontier_idx));
+    std::tie(
+      goal_pose.pose.position.x,
+      goal_pose.pose.position.y) = cellToWorld(frontiers_.at(best_frontier_idx));
     start_pose.pose.position.x = robot_position_.first;
     start_pose.pose.position.y = robot_position_.second;
 
