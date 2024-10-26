@@ -1,6 +1,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include "std_srvs/srv/empty.hpp"
+#include "std_msgs/msg/string.hpp"
 #include "nav_client_cpp/srv/nav_to_pose.hpp"
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <tf2_ros/buffer.h>
@@ -64,6 +65,12 @@ public:
     map_with_frontiers_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
       "/map_with_frontiers",
       10);
+
+    // Subscriber for goal success
+    goal_sucess_subscriber_ = create_subscription<std_msgs::msg::String>(
+      "jackal_goal", 10, std::bind(
+        &FrontierExplorationNode::goalPubCallback, this,
+        std::placeholders::_1));
     return nav2_util::CallbackReturn::SUCCESS;
   }
 
@@ -116,6 +123,7 @@ private:
   goal_publisher_;
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::OccupancyGrid>>
   map_with_frontiers_pub_;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr goal_sucess_subscriber_;
 
   // Services for action node
   rclcpp::CallbackGroup::SharedPtr nav_to_pose_callback_group_;
@@ -127,6 +135,7 @@ private:
   // Data objects
   nav_msgs::msg::OccupancyGrid map_data_;
   std::vector<std::pair<int, int>> frontiers_;
+  std::vector<double> entropies_;
   std::pair<double, double> robot_position_;
 
   double viewpoint_depth_;
@@ -134,7 +143,8 @@ private:
   double radius_ = 2.5;
   bool use_naive_ = false;
   bool path_valid_;
-  bool use_action_client_ = true;
+  bool use_action_client_ = false;
+  int best_frontier_idx_;
 
   // Buffer objects
   tf2_ros::Buffer tf_buffer_;
@@ -149,6 +159,43 @@ private:
     if (current_state.id() == lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE) {
       RCLCPP_INFO(get_logger(), "Callback is present. Triggering activation.");
       this->activate();
+    }
+  }
+
+  void goalPubCallback(const std_msgs::msg::String::SharedPtr msg)
+  {
+
+    if (msg->data == "Succeeded") {
+      RCLCPP_INFO(get_logger(), "Success, waiting for arrival.");
+    } else if (msg->data == "Aborted" || msg->data == "Canceled") {
+      // handle option2
+    } else if (msg->data == "Rejected") {
+      RCLCPP_WARN(get_logger(), "Goal rejected... selecting next candidate.");
+
+      if (best_frontier_idx_ >= 0 && best_frontier_idx_ < static_cast<int>(entropies_.size())) {
+        // Erase most recently selected frontier and its entropy
+        entropies_.erase(entropies_.begin() + best_frontier_idx_);
+        frontiers_.erase(frontiers_.begin() + best_frontier_idx_);
+
+        // Pick new one
+        double best_possible_entropy;
+        auto min_iterator = std::min_element(entropies_.begin(), entropies_.end());
+        best_possible_entropy = *min_iterator;
+        best_frontier_idx_ = std::distance(entropies_.begin(), min_iterator);
+
+        RCLCPP_INFO(
+          get_logger(), "Selecting frontier %d, with entropy reduction %f", best_frontier_idx_,
+          best_possible_entropy);
+
+        publishToNav2ActionClient(frontiers_.at(best_frontier_idx_));
+      } else {
+        RCLCPP_WARN(get_logger(), "Mismatch in index. Skipping reset...");
+      }
+
+    } else if (msg->data == "Unknown") {
+      RCLCPP_DEBUG(get_logger(), "Unknown Response");
+    } else {
+      RCLCPP_WARN(get_logger(), "Rogue Unknown Response");
     }
   }
 
@@ -289,24 +336,34 @@ private:
     }
 
     if (!use_action_client_) {
-      geometry_msgs::msg::PoseStamped goal_pose;
-      goal_pose.header.frame_id = "map";
-      std::tie(goal_pose.pose.position.x, goal_pose.pose.position.y) = cellToWorld(goal_frontier);
-      goal_pose.pose.position.z = 0.0;
-      goal_pose.pose.orientation.w = 1.0;
-
-      goal_publisher_->publish(goal_pose);
-      RCLCPP_INFO(
-        get_logger(), "Publishing goal at %f, %f", goal_pose.pose.position.x,
-        goal_pose.pose.position.y);
+      publishToNav2PlannerServer(goal_frontier);
     } else {
-      auto goal_pose = std::make_shared<nav_client_cpp::srv::NavToPose::Request>();
-      std::tie(goal_pose->x, goal_pose->y) = cellToWorld(goal_frontier);
-      goal_pose->theta = 0.0;
-      RCLCPP_INFO(
-        get_logger(), "Publishing goal at %f, %f", goal_pose->x, goal_pose->y);
-      auto future_result = nav_to_pose_client_->async_send_request(goal_pose);
+      publishToNav2ActionClient(goal_frontier);
     }
+  }
+
+  void publishToNav2ActionClient(const std::pair<int, int> & goal_frontier)
+  {
+    auto goal_pose = std::make_shared<nav_client_cpp::srv::NavToPose::Request>();
+    std::tie(goal_pose->x, goal_pose->y) = cellToWorld(goal_frontier);
+    goal_pose->theta = 0.0;
+    RCLCPP_INFO(
+      get_logger(), "Publishing goal at %f, %f", goal_pose->x, goal_pose->y);
+    auto future_result = nav_to_pose_client_->async_send_request(goal_pose);
+  }
+
+  void publishToNav2PlannerServer(const std::pair<int, int> & goal_frontier)
+  {
+    geometry_msgs::msg::PoseStamped goal_pose;
+    goal_pose.header.frame_id = "map";
+    std::tie(goal_pose.pose.position.x, goal_pose.pose.position.y) = cellToWorld(goal_frontier);
+    goal_pose.pose.position.z = 0.0;
+    goal_pose.pose.orientation.w = 1.0;
+
+    goal_publisher_->publish(goal_pose);
+    RCLCPP_INFO(
+      get_logger(), "Publishing goal at %f, %f", goal_pose.pose.position.x,
+      goal_pose.pose.position.y);
   }
 
   void publishMapWithFrontiers()
@@ -384,12 +441,10 @@ private:
 
   std::pair<int, int> bestScoreFrontier()
   {
-    // int best_score = 0;
-    int best_frontier_idx;
     double total_entropy = calculateMapEntropy();
-    double best_possible_entropy;
     RCLCPP_INFO(get_logger(), "Total Map Entropy %f", total_entropy);
-    std::vector<double> entropies;
+    // Reset list of entropies
+    entropies_.clear();
 
     // Loop through all frontiers and get score
     for (size_t i = 0; i < frontiers_.size(); ++i) {
@@ -398,19 +453,21 @@ private:
       int unknowns = countUnknownCellsWithinRadius(idx, radius_);
 
       // calculate current reduced entropy and place in list
-      entropies.emplace_back(
+      entropies_.emplace_back(
         total_entropy - (unknowns * calculateEntropy(-1)) +
         (unknowns * calculateEntropy(0)));
     }
 
-    auto min_iterator = std::min_element(entropies.begin(), entropies.end());
+    // Select least entropy from list and find index
+    double best_possible_entropy;
+    auto min_iterator = std::min_element(entropies_.begin(), entropies_.end());
     best_possible_entropy = *min_iterator;
-    best_frontier_idx = std::distance(entropies.begin(), min_iterator);
+    best_frontier_idx_ = std::distance(entropies_.begin(), min_iterator);
 
     RCLCPP_INFO(
-      get_logger(), "Selecting frontier %d, with entropy reduction %f", best_frontier_idx,
+      get_logger(), "Selecting frontier %d, with entropy reduction %f", best_frontier_idx_,
       best_possible_entropy);
-    return frontiers_.at(best_frontier_idx);
+    return frontiers_.at(best_frontier_idx_);
   }
 
   double calculateMapEntropy()

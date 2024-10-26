@@ -235,6 +235,8 @@ private:
             state_next_ = State::WAIT_FOR_MOVEMENT_COMPLETE;
           } else {
             RCLCPP_ERROR_STREAM(get_logger(), "Goal was rejected by server");
+            jackal_goal_msg_.data = "Rejected";
+            pub_waypoint_goal_->publish(jackal_goal_msg_);
             state_next_ = State::IDLE;
           }
         }
