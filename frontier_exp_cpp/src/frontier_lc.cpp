@@ -143,8 +143,9 @@ private:
   double radius_ = 2.5;
   bool use_naive_ = false;
   bool path_valid_;
-  bool use_action_client_ = false;
+  bool use_action_client_ = true;
   int best_frontier_idx_;
+  bool first_goal_sent_ = false;
 
   // Buffer objects
   tf2_ros::Buffer tf_buffer_;
@@ -167,8 +168,10 @@ private:
 
     if (msg->data == "Succeeded") {
       RCLCPP_INFO(get_logger(), "Success, waiting for arrival.");
-    } else if (msg->data == "Aborted" || msg->data == "Canceled") {
-      // handle option2
+    } else if (msg->data == "Aborted") {
+      RCLCPP_WARN(get_logger(), "Goal aborted... selecting next candidate.");
+    } else if (msg->data == "Canceled") {
+      RCLCPP_WARN(get_logger(), "Goal Cancelled.");
     } else if (msg->data == "Rejected") {
       RCLCPP_WARN(get_logger(), "Goal rejected... selecting next candidate.");
 
@@ -339,11 +342,16 @@ private:
       publishToNav2PlannerServer(goal_frontier);
     } else {
       publishToNav2ActionClient(goal_frontier);
+      first_goal_sent_ = true;
     }
   }
 
   void publishToNav2ActionClient(const std::pair<int, int> & goal_frontier)
   {
+    // if (first_goal_sent_) {
+    //   auto cancel_future = cancel_nav_client_->async_send_request(
+    //     std::make_shared<std_srvs::srv::Empty::Request>());
+    // }
     auto goal_pose = std::make_shared<nav_client_cpp::srv::NavToPose::Request>();
     std::tie(goal_pose->x, goal_pose->y) = cellToWorld(goal_frontier);
     goal_pose->theta = 0.0;

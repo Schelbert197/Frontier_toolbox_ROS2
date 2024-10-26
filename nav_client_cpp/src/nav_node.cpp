@@ -110,6 +110,22 @@ private:
     const std::shared_ptr<nav_client_cpp::srv::NavToPose::Request> request,
     std::shared_ptr<nav_client_cpp::srv::NavToPose::Response>
   ) {
+
+    // // Check if there is an active goal and cancel it before sending a new one
+    // if (goal_handle_ && (
+    //   goal_handle_->get_status() == rclcpp_action::GoalStatus::STATUS_ACCEPTED ||
+    //   goal_handle_->get_status() == rclcpp_action::GoalStatus::STATUS_EXECUTING)) {
+    //   RCLCPP_INFO(this->get_logger(), "Cancelling previous goal before sending a new one.");
+    //   auto cancel_result_future = act_nav_to_pose_->async_cancel_goal(goal_handle_);
+
+    //   // Wait for the cancel to complete before sending the new goal
+    //   if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), cancel_result_future) 
+    //       == rclcpp::FutureReturnCode::SUCCESS) {
+    //     RCLCPP_INFO(this->get_logger(), "Previous goal cancelled successfully.");
+    //   } else {
+    //     RCLCPP_ERROR(this->get_logger(), "Failed to cancel previous goal.");
+    //   }
+    // }
     //Store requested pose
     goal_msg_.pose.pose.position.x = request->x;
     goal_msg_.pose.pose.position.y = request->y;
