@@ -20,7 +20,8 @@
 X(IDLE, "IDLE") \
 X(SEND_GOAL, "SEND_GOAL") \
 X(WAIT_FOR_GOAL_RESPONSE, "WAIT_FOR_GOAL_RESPONSE") \
-X(WAIT_FOR_MOVEMENT_COMPLETE, "WAIT_FOR_MOVEMENT_COMPLETE")
+X(WAIT_FOR_MOVEMENT_COMPLETE, "WAIT_FOR_MOVEMENT_COMPLETE") \
+X(CANCEL_CURRENT_GOAL, "CANCEL_CURRENT_GOAL")
 
 #define X(state, name) state,
 enum class State : size_t {STATES};
@@ -104,6 +105,7 @@ private:
   std::shared_ptr<const nav2_msgs::action::NavigateToPose::Feedback> feedback_ = nullptr;
   std::shared_ptr<rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateToPose>::WrappedResult>
   result_ = nullptr;
+  std::shared_future<std::shared_ptr<action_msgs::srv::CancelGoal_Response>> cancel_result_future_;
   
 
   void srv_nav_to_pose_callback(
@@ -111,29 +113,58 @@ private:
     std::shared_ptr<nav_client_cpp::srv::NavToPose::Response>
   ) {
 
-    // // Check if there is an active goal and cancel it before sending a new one
-    // if (goal_handle_ && (
-    //   goal_handle_->get_status() == rclcpp_action::GoalStatus::STATUS_ACCEPTED ||
-    //   goal_handle_->get_status() == rclcpp_action::GoalStatus::STATUS_EXECUTING)) {
-    //   RCLCPP_INFO(this->get_logger(), "Cancelling previous goal before sending a new one.");
-    //   auto cancel_result_future = act_nav_to_pose_->async_cancel_goal(goal_handle_);
+    // Check if there is an active goal and cancel it before sending a new one
+    if (goal_handle_ && (
+      goal_handle_->get_status() == rclcpp_action::GoalStatus::STATUS_ACCEPTED ||
+      goal_handle_->get_status() == rclcpp_action::GoalStatus::STATUS_EXECUTING)) {
+      // RCLCPP_INFO(this->get_logger(), "Cancelling previous goal before sending a new one.");
+      // auto cancel_result_future = act_nav_to_pose_->async_cancel_goal(goal_handle_);
 
-    //   // Wait for the cancel to complete before sending the new goal
-    //   if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), cancel_result_future) 
-    //       == rclcpp::FutureReturnCode::SUCCESS) {
-    //     RCLCPP_INFO(this->get_logger(), "Previous goal cancelled successfully.");
-    //   } else {
-    //     RCLCPP_ERROR(this->get_logger(), "Failed to cancel previous goal.");
-    //   }
-    // }
-    //Store requested pose
-    goal_msg_.pose.pose.position.x = request->x;
-    goal_msg_.pose.pose.position.y = request->y;
-    goal_msg_.pose.pose.orientation = rpy_to_quaternion(0.0, 0.0, request->theta);
-    RCLCPP_INFO(this->get_logger(), "Quaternion: x:%f, y:%f, z:%f, w:%f", goal_msg_.pose.pose.orientation.x, goal_msg_.pose.pose.orientation.y, goal_msg_.pose.pose.orientation.z, goal_msg_.pose.pose.orientation.w);
+      // cancel_result_future.then([this](auto result) {
+      //   if (result.get().code == rclcpp_action::CancelResponse::ACCEPT) {
+      //     RCLCPP_INFO(this->get_logger(), "Previous goal cancelled successfully.");
+      //   } else {
+      //     RCLCPP_ERROR(this->get_logger(), "Failed to cancel previous goal.");
+      //   }
+      // });
+      //Store requested pose
+      goal_msg_.pose.pose.position.x = request->x;
+      goal_msg_.pose.pose.position.y = request->y;
+      goal_msg_.pose.pose.orientation = rpy_to_quaternion(0.0, 0.0, request->theta);
+      RCLCPP_INFO(this->get_logger(), "Quaternion: x:%f, y:%f, z:%f, w:%f", 
+                  goal_msg_.pose.pose.orientation.x, 
+                  goal_msg_.pose.pose.orientation.y, 
+                  goal_msg_.pose.pose.orientation.z, 
+                  goal_msg_.pose.pose.orientation.w);
 
-    //Initiate action call
-    state_next_ = State::SEND_GOAL;
+      //Initiate action call
+      state_next_ = State::CANCEL_CURRENT_GOAL;
+    } else {
+      //Store requested pose
+      goal_msg_.pose.pose.position.x = request->x;
+      goal_msg_.pose.pose.position.y = request->y;
+      goal_msg_.pose.pose.orientation = rpy_to_quaternion(0.0, 0.0, request->theta);
+      RCLCPP_INFO(this->get_logger(), "Quaternion: x:%f, y:%f, z:%f, w:%f", 
+                  goal_msg_.pose.pose.orientation.x, 
+                  goal_msg_.pose.pose.orientation.y, 
+                  goal_msg_.pose.pose.orientation.z, 
+                  goal_msg_.pose.pose.orientation.w);
+
+      //Initiate action call
+      state_next_ = State::SEND_GOAL;
+    }
+    // //Store requested pose
+    // goal_msg_.pose.pose.position.x = request->x;
+    // goal_msg_.pose.pose.position.y = request->y;
+    // goal_msg_.pose.pose.orientation = rpy_to_quaternion(0.0, 0.0, request->theta);
+    // RCLCPP_INFO(this->get_logger(), "Quaternion: x:%f, y:%f, z:%f, w:%f", 
+    //             goal_msg_.pose.pose.orientation.x, 
+    //             goal_msg_.pose.pose.orientation.y, 
+    //             goal_msg_.pose.pose.orientation.z, 
+    //             goal_msg_.pose.pose.orientation.w);
+
+    // //Initiate action call
+    // state_next_ = State::SEND_GOAL;
   }
 
   void cancel_nav_callback(
@@ -214,6 +245,33 @@ private:
     switch(state_) {
       case State::IDLE:
       {
+        break;
+      }
+      case State::CANCEL_CURRENT_GOAL:
+      {
+        if (!goal_handle_) {
+          RCLCPP_ERROR(this->get_logger(), "No goal handle to cancel.");
+          state_next_ = State::IDLE;
+          return;
+        }
+        if (new_state) {
+          RCLCPP_INFO(this->get_logger(), "Cancelling the current goal.");
+        }
+        // Initiate a request to cancel all active goals
+        cancel_result_future_ = act_nav_to_pose_->async_cancel_all_goals();
+
+        // Check the result of the cancel request
+        if (cancel_result_future_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+          auto result = cancel_result_future_.get();
+          if (result->return_code == action_msgs::srv::CancelGoal::Response::ERROR_NONE) {
+            RCLCPP_INFO(this->get_logger(), "All goals successfully canceled.");
+            goal_handle_.reset(); // Clear the goal handle as all goals are canceled
+            state_next_ = State::SEND_GOAL; // Or set to IDLE if you don’t want to resend immediately
+          } else {
+            RCLCPP_WARN(this->get_logger(), "Failed to cancel all goals; error code: %d", result->return_code);
+            state_next_ = State::IDLE;
+          }
+        }
         break;
       }
       case State::SEND_GOAL:
