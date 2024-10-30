@@ -27,13 +27,28 @@ public:
   {
     RCLCPP_INFO(get_logger(), "Frontier explorer lifecycle node initialized");
 
-    // Parameter to specify if we are in simulation or real robot
-    // declare_parameter("use_sim_time", false);
-    is_sim_ = get_parameter("use_sim_time").as_bool();
+    // Init Descriptions
+    auto use_naive_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto use_action_client_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto viewpoint_depth_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto entropy_radius_des = rcl_interfaces::msg::ParameterDescriptor{};
 
-    // Store frontiers and map information
-    declare_parameter("viewpoint_depth", 1.0);
+    // Parameter Descriptions and Declarations
+    use_naive_des.description = "Choose to use naive frontier selection or entropy reduction";
+    declare_parameter("use_naive", false, use_naive_des);
+    use_action_client_des.description = "Choose to use custom action client node (true) or just publish goal pose to nav2 (false)";
+    declare_parameter("use_action_client_node", false, use_action_client_des);
+    viewpoint_depth_des.description = "The distance in front of the robot that the naive algorithm chooses a frontier by min dist [m]";
+    declare_parameter("viewpoint_depth", 1.0, viewpoint_depth_des);
+    entropy_radius_des.description = "The radius around a frontier considered in a state update estimation";
+    declare_parameter("entropy_radius", 2.5, entropy_radius_des);
+
+    // Get Parameters
+    is_sim_ = get_parameter("use_sim_time").as_bool();
+    use_naive_ = get_parameter("use_naive").as_bool();
+    use_action_client_ = get_parameter("use_action_client_node").as_bool();
     viewpoint_depth_ = get_parameter("viewpoint_depth").as_double();
+    entropy_radius_ = get_parameter("entropy_radius").as_double();
 
     // Create separate callback groups for each service client
     nav_to_pose_callback_group_ = this->create_callback_group(
@@ -140,12 +155,11 @@ private:
 
   double viewpoint_depth_;
   bool is_sim_;
-  double radius_ = 2.5;
-  bool use_naive_ = false;
+  double entropy_radius_ = 2.5;
+  bool use_naive_;
   bool path_valid_;
-  bool use_action_client_ = true;
+  bool use_action_client_;
   int best_frontier_idx_;
-  bool first_goal_sent_ = false;
 
   // Buffer objects
   tf2_ros::Buffer tf_buffer_;
@@ -211,18 +225,20 @@ private:
     map_data_ = *msg;
 
     auto current_state = this->get_current_state();
-
-    // Get the robot's current viewpoint position from the transform
-    auto robot_vp_position = getRobotViewpoint();
-    if (robot_vp_position &&
-      current_state.id() == lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE)
+    if (current_state.id() == lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE)
     {
-      findFrontiers();
-      cleanupFrontiers();
-      publishGoalFrontier();
-      publishMapWithFrontiers();
+      // Get the robot's current viewpoint position from the transform
+      auto robot_vp_position = getRobotViewpoint();
+      if (robot_vp_position) {
+        findFrontiers();
+        cleanupFrontiers();
+        publishGoalFrontier();
+        publishMapWithFrontiers();
+      } else {
+        RCLCPP_WARN(get_logger(), "Unable to determine robot's position.");
+      }
     } else {
-      RCLCPP_WARN(get_logger(), "Node inactive or unable to determine robot's position.");
+      RCLCPP_WARN(get_logger(), "Node inactive... awaiting activation");
     }
   }
 
@@ -346,16 +362,11 @@ private:
       publishToNav2PlannerServer(goal_frontier);
     } else {
       publishToNav2ActionClient(goal_frontier);
-      first_goal_sent_ = true;
     }
   }
 
   void publishToNav2ActionClient(const std::pair<int, int> & goal_frontier)
   {
-    // if (first_goal_sent_) {
-    //   auto cancel_future = cancel_nav_client_->async_send_request(
-    //     std::make_shared<std_srvs::srv::Empty::Request>());
-    // }
     auto goal_pose = std::make_shared<nav_client_cpp::srv::NavToPose::Request>();
     std::tie(goal_pose->x, goal_pose->y) = cellToWorld(goal_frontier);
     goal_pose->theta = 0.0;
@@ -462,7 +473,7 @@ private:
     for (size_t i = 0; i < frontiers_.size(); ++i) {
       const auto & frontier = frontiers_.at(i);
       int idx = frontier.second * map_data_.info.width + frontier.first;
-      int unknowns = countUnknownCellsWithinRadius(idx, radius_);
+      int unknowns = countUnknownCellsWithinRadius(idx, entropy_radius_);
 
       // calculate current reduced entropy and place in list
       entropies_.emplace_back(

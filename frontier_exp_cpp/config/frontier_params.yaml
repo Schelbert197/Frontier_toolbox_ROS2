@@ -1,0 +1,10 @@
+frontier_explorer:
+  ros__parameters:
+    use_naive: false
+    viewpoint_depth: 1.0
+    use_action_client_node: true
+    entropy_radius: 2.4
+
+nav_to_pose:
+  ros__parameters:
+    pose_frame: "map"
