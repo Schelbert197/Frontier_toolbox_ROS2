@@ -117,16 +117,7 @@ private:
     if (goal_handle_ && (
       goal_handle_->get_status() == rclcpp_action::GoalStatus::STATUS_ACCEPTED ||
       goal_handle_->get_status() == rclcpp_action::GoalStatus::STATUS_EXECUTING)) {
-      // RCLCPP_INFO(this->get_logger(), "Cancelling previous goal before sending a new one.");
-      // auto cancel_result_future = act_nav_to_pose_->async_cancel_goal(goal_handle_);
 
-      // cancel_result_future.then([this](auto result) {
-      //   if (result.get().code == rclcpp_action::CancelResponse::ACCEPT) {
-      //     RCLCPP_INFO(this->get_logger(), "Previous goal cancelled successfully.");
-      //   } else {
-      //     RCLCPP_ERROR(this->get_logger(), "Failed to cancel previous goal.");
-      //   }
-      // });
       //Store requested pose
       goal_msg_.pose.pose.position.x = request->x;
       goal_msg_.pose.pose.position.y = request->y;
@@ -153,18 +144,6 @@ private:
       //Initiate action call
       state_next_ = State::SEND_GOAL;
     }
-    // //Store requested pose
-    // goal_msg_.pose.pose.position.x = request->x;
-    // goal_msg_.pose.pose.position.y = request->y;
-    // goal_msg_.pose.pose.orientation = rpy_to_quaternion(0.0, 0.0, request->theta);
-    // RCLCPP_INFO(this->get_logger(), "Quaternion: x:%f, y:%f, z:%f, w:%f", 
-    //             goal_msg_.pose.pose.orientation.x, 
-    //             goal_msg_.pose.pose.orientation.y, 
-    //             goal_msg_.pose.pose.orientation.z, 
-    //             goal_msg_.pose.pose.orientation.w);
-
-    // //Initiate action call
-    // state_next_ = State::SEND_GOAL;
   }
 
   void cancel_nav_callback(

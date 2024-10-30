@@ -170,35 +170,39 @@ private:
       RCLCPP_INFO(get_logger(), "Success, waiting for arrival.");
     } else if (msg->data == "Aborted") {
       RCLCPP_WARN(get_logger(), "Goal aborted... selecting next candidate.");
+      selectNextBest();
     } else if (msg->data == "Canceled") {
       RCLCPP_WARN(get_logger(), "Goal Cancelled.");
     } else if (msg->data == "Rejected") {
       RCLCPP_WARN(get_logger(), "Goal rejected... selecting next candidate.");
-
-      if (best_frontier_idx_ >= 0 && best_frontier_idx_ < static_cast<int>(entropies_.size())) {
-        // Erase most recently selected frontier and its entropy
-        entropies_.erase(entropies_.begin() + best_frontier_idx_);
-        frontiers_.erase(frontiers_.begin() + best_frontier_idx_);
-
-        // Pick new one
-        double best_possible_entropy;
-        auto min_iterator = std::min_element(entropies_.begin(), entropies_.end());
-        best_possible_entropy = *min_iterator;
-        best_frontier_idx_ = std::distance(entropies_.begin(), min_iterator);
-
-        RCLCPP_INFO(
-          get_logger(), "Selecting frontier %d, with entropy reduction %f", best_frontier_idx_,
-          best_possible_entropy);
-
-        publishToNav2ActionClient(frontiers_.at(best_frontier_idx_));
-      } else {
-        RCLCPP_WARN(get_logger(), "Mismatch in index. Skipping reset...");
-      }
-
+      selectNextBest();
     } else if (msg->data == "Unknown") {
       RCLCPP_DEBUG(get_logger(), "Unknown Response");
     } else {
       RCLCPP_WARN(get_logger(), "Rogue Unknown Response");
+    }
+  }
+
+  void selectNextBest()
+  {
+    if (best_frontier_idx_ >= 0 && best_frontier_idx_ < static_cast<int>(entropies_.size())) {
+      // Erase most recently selected frontier and its entropy
+      entropies_.erase(entropies_.begin() + best_frontier_idx_);
+      frontiers_.erase(frontiers_.begin() + best_frontier_idx_);
+
+      // Pick new one
+      double best_possible_entropy;
+      auto min_iterator = std::min_element(entropies_.begin(), entropies_.end());
+      best_possible_entropy = *min_iterator;
+      best_frontier_idx_ = std::distance(entropies_.begin(), min_iterator);
+
+      RCLCPP_INFO(
+        get_logger(), "Selecting frontier %d, with entropy reduction %f", best_frontier_idx_,
+        best_possible_entropy);
+
+      publishToNav2ActionClient(frontiers_.at(best_frontier_idx_));
+    } else {
+      RCLCPP_WARN(get_logger(), "Mismatch in index. Skipping reset...");
     }
   }
 
