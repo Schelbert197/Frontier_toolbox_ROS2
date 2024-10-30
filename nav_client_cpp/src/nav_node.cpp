@@ -106,12 +106,31 @@ private:
   std::shared_ptr<rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateToPose>::WrappedResult>
   result_ = nullptr;
   std::shared_future<std::shared_ptr<action_msgs::srv::CancelGoal_Response>> cancel_result_future_;
+  bool cancel_and_replan_ = false;
   
+  bool are_goals_equal(const geometry_msgs::msg::Pose& pose1, const geometry_msgs::msg::Pose& pose2) {
+  const double epsilon = 1e-5;  // Define tolerance level
+  return std::fabs(pose1.position.x - pose2.position.x) < epsilon &&
+         std::fabs(pose1.position.y - pose2.position.y) < epsilon &&
+         std::fabs(pose1.orientation.z - pose2.orientation.z) < epsilon &&  // Checking only z and w
+         std::fabs(pose1.orientation.w - pose2.orientation.w) < epsilon;
+}
 
   void srv_nav_to_pose_callback(
     const std::shared_ptr<nav_client_cpp::srv::NavToPose::Request> request,
     std::shared_ptr<nav_client_cpp::srv::NavToPose::Response>
   ) {
+
+    // Skip if goal is the same
+    geometry_msgs::msg::Pose new_pose;
+    new_pose.position.x = request->x;
+    new_pose.position.y = request->y;
+    new_pose.orientation = rpy_to_quaternion(0.0, 0.0, request->theta);
+    
+    if (goal_handle_ && are_goals_equal(goal_msg_.pose.pose, new_pose)) {
+      RCLCPP_INFO(this->get_logger(), "Received goal is the same as the current one. Continuing...");
+      return;
+    }
 
     // Check if there is an active goal and cancel it before sending a new one
     if (goal_handle_ && (
@@ -129,6 +148,7 @@ private:
                   goal_msg_.pose.pose.orientation.w);
 
       //Initiate action call
+      cancel_and_replan_ = true;
       state_next_ = State::CANCEL_CURRENT_GOAL;
     } else {
       //Store requested pose
@@ -152,6 +172,7 @@ private:
   ) {
     RCLCPP_INFO_STREAM(get_logger(), "Cancelling navigation.");
     act_nav_to_pose_->async_cancel_all_goals();
+    cancel_and_replan_ = false;
     state_next_ = State::IDLE;
   }
 
@@ -195,8 +216,14 @@ private:
         pub_waypoint_goal_->publish(jackal_goal_msg_);
         return;
       case rclcpp_action::ResultCode::CANCELED:
-        RCLCPP_ERROR(this->get_logger(), "Goal was canceled");
-        jackal_goal_msg_.data = "Canceled";
+        if (cancel_and_replan_) {
+          RCLCPP_WARN(this->get_logger(), "Previous goal canceled. Planing next...");
+          jackal_goal_msg_.data = "Canceled"; // Maybe change this to replanned???
+          state_next_ = State::SEND_GOAL;
+        } else {
+          RCLCPP_WARN(this->get_logger(), "Goal was canceled");
+          jackal_goal_msg_.data = "Canceled";
+        }
         pub_waypoint_goal_->publish(jackal_goal_msg_);
         return;
       default:
@@ -271,9 +298,11 @@ private:
             std::bind(&NavToPose::result_callback, this, std::placeholders::_1);
           act_nav_to_pose_->async_send_goal(goal_msg_, send_goal_options);
 
+          cancel_and_replan_ = false;
           state_next_ = State::WAIT_FOR_GOAL_RESPONSE;
         } else {
           RCLCPP_ERROR_STREAM(get_logger(), "Action server not available, aborting.");
+          cancel_and_replan_ = false;
           state_next_ = State::IDLE;
         }
 
