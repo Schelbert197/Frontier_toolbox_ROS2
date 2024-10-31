@@ -4,6 +4,7 @@ frontier_explorer:
     viewpoint_depth: 1.0
     use_action_client_node: true
     entropy_radius: 2.4
+    robot_radius: 0.35
 
 nav_to_pose:
   ros__parameters:

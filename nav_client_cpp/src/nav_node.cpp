@@ -9,6 +9,7 @@
 #include "std_srvs/srv/empty.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "geometry_msgs/msg/quaternion.hpp"
+#include "visualization_msgs/msg/marker.hpp"
 #include "tf2/LinearMath/Quaternion.h"
 #include "tf2/LinearMath/Matrix3x3.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
@@ -59,7 +60,8 @@ public:
     auto param = rcl_interfaces::msg::ParameterDescriptor{};
     param.description = "The frame in which poses are sent.";
     declare_parameter("pose_frame", "map", param);
-    goal_msg_.pose.header.frame_id = get_parameter("pose_frame").get_parameter_value().get<std::string>();
+    pose_frame_ = get_parameter("pose_frame").get_parameter_value().get<std::string>();
+    goal_msg_.pose.header.frame_id = pose_frame_;
 
     // Timers
     timer_ = create_wall_timer(
@@ -78,6 +80,7 @@ public:
 
     // Publishers
     pub_waypoint_goal_ = create_publisher<std_msgs::msg::String>("jackal_goal", 10);
+    pub_goal_marker_ = create_publisher<visualization_msgs::msg::Marker>("/client_goal", 10);
 
     // Action Clients
     act_nav_to_pose_ = rclcpp_action::create_client<nav2_msgs::action::NavigateToPose>(
@@ -92,9 +95,11 @@ private:
   rclcpp::Service<std_srvs::srv::Empty>::SharedPtr srv_cancel_nav_;
   rclcpp_action::Client<nav2_msgs::action::NavigateToPose>::SharedPtr act_nav_to_pose_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pub_waypoint_goal_;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr pub_goal_marker_;
 
   double rate_ = 100.0; //Hz
   double interval_ = 1.0 / rate_; //seconds
+  std::string pose_frame_;
   State state_ = State::IDLE;
   State state_last_ = state_;
   State state_next_ = state_;
@@ -114,7 +119,29 @@ private:
          std::fabs(pose1.position.y - pose2.position.y) < epsilon &&
          std::fabs(pose1.orientation.z - pose2.orientation.z) < epsilon &&  // Checking only z and w
          std::fabs(pose1.orientation.w - pose2.orientation.w) < epsilon;
-}
+  }
+
+  void publish_goal_marker(const double & x, const double & y, const geometry_msgs::msg::Quaternion & orientation) {
+    visualization_msgs::msg::Marker goal_arrow;
+    goal_arrow.header.frame_id = pose_frame_;
+    goal_arrow.header.stamp = get_clock()->now();
+    goal_arrow.id = 0;
+    goal_arrow.type = visualization_msgs::msg::Marker::ARROW;
+    goal_arrow.action = visualization_msgs::msg::Marker::ADD;
+    goal_arrow.pose.position.x = x;
+    goal_arrow.pose.position.y = y;
+    goal_arrow.pose.position.z = 0.01;
+    goal_arrow.pose.orientation = orientation;
+    goal_arrow.scale.x = 0.5;
+    goal_arrow.scale.y = 0.1;
+    goal_arrow.scale.z = 0.1;
+    goal_arrow.color.r = 1.0f;
+    goal_arrow.color.g = 0.5f;
+    goal_arrow.color.b = 0.0f;
+    goal_arrow.color.a = 1.0;
+
+    pub_goal_marker_->publish(goal_arrow);
+  }
 
   void srv_nav_to_pose_callback(
     const std::shared_ptr<nav_client_cpp::srv::NavToPose::Request> request,
@@ -198,6 +225,9 @@ private:
                                   << ", y = " << feedback_->current_pose.pose.position.y
                                   << ", theta = " << yaw
       );
+      publish_goal_marker(goal_msg_.pose.pose.position.x,
+                          goal_msg_.pose.pose.position.y,
+                          goal_msg_.pose.pose.orientation);
     }
   }
 

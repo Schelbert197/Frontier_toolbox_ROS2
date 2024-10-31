@@ -32,6 +32,7 @@ public:
     auto use_action_client_des = rcl_interfaces::msg::ParameterDescriptor{};
     auto viewpoint_depth_des = rcl_interfaces::msg::ParameterDescriptor{};
     auto entropy_radius_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto robot_radius_des = rcl_interfaces::msg::ParameterDescriptor{};
 
     // Parameter Descriptions and Declarations
     use_naive_des.description = "Choose to use naive frontier selection or entropy reduction";
@@ -42,6 +43,8 @@ public:
     declare_parameter("viewpoint_depth", 1.0, viewpoint_depth_des);
     entropy_radius_des.description = "The radius around a frontier considered in a state update estimation";
     declare_parameter("entropy_radius", 2.5, entropy_radius_des);
+    robot_radius_des.description = "The radius around the robot in [m] to determine if a frontier is too close";
+    declare_parameter("robot_radius", 0.35, robot_radius_des);
 
     // Get Parameters
     is_sim_ = get_parameter("use_sim_time").as_bool();
@@ -49,6 +52,7 @@ public:
     use_action_client_ = get_parameter("use_action_client_node").as_bool();
     viewpoint_depth_ = get_parameter("viewpoint_depth").as_double();
     entropy_radius_ = get_parameter("entropy_radius").as_double();
+    robot_radius_ = get_parameter("robot_radius").as_double();
 
     // Create separate callback groups for each service client
     nav_to_pose_callback_group_ = this->create_callback_group(
@@ -160,6 +164,7 @@ private:
   bool path_valid_;
   bool use_action_client_;
   int best_frontier_idx_;
+  double robot_radius_;
 
   // Buffer objects
   tf2_ros::Buffer tf_buffer_;
@@ -337,7 +342,7 @@ private:
 
   bool tooClose(const std::pair<int, int> & frontier)
   {
-    return distanceToRobot(frontier) <= 0.25;
+    return distanceToRobot(frontier) <= robot_radius_;
   }
 
   void publishGoalFrontier()
