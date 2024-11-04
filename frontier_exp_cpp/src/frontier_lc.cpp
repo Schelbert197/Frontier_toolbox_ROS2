@@ -33,18 +33,25 @@ public:
     auto viewpoint_depth_des = rcl_interfaces::msg::ParameterDescriptor{};
     auto entropy_radius_des = rcl_interfaces::msg::ParameterDescriptor{};
     auto robot_radius_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto entropy_calc_des = rcl_interfaces::msg::ParameterDescriptor{};
 
     // Parameter Descriptions and Declarations
     use_naive_des.description = "Choose to use naive frontier selection or entropy reduction";
     declare_parameter("use_naive", false, use_naive_des);
-    use_action_client_des.description = "Choose to use custom action client node (true) or just publish goal pose to nav2 (false)";
+    use_action_client_des.description =
+      "Choose to use custom action client node (true) or just publish goal pose to nav2 (false)";
     declare_parameter("use_action_client_node", false, use_action_client_des);
-    viewpoint_depth_des.description = "The distance in front of the robot that the naive algorithm chooses a frontier by min dist [m]";
+    viewpoint_depth_des.description =
+      "The distance in front of the robot that the naive algorithm chooses a frontier by min dist [m]";
     declare_parameter("viewpoint_depth", 1.0, viewpoint_depth_des);
-    entropy_radius_des.description = "The radius around a frontier considered in a state update estimation";
+    entropy_radius_des.description =
+      "The radius around a frontier considered in a state update estimation";
     declare_parameter("entropy_radius", 2.5, entropy_radius_des);
-    robot_radius_des.description = "The radius around the robot in [m] to determine if a frontier is too close";
+    robot_radius_des.description =
+      "The radius around the robot in [m] to determine if a frontier is too close";
     declare_parameter("robot_radius", 0.35, robot_radius_des);
+    entropy_calc_des.description = "Choose whether to calculate entropy or select based on raw unknown count";
+    declare_parameter("use_entropy_calc", false, entropy_calc_des);
 
     // Get Parameters
     is_sim_ = get_parameter("use_sim_time").as_bool();
@@ -53,6 +60,7 @@ public:
     viewpoint_depth_ = get_parameter("viewpoint_depth").as_double();
     entropy_radius_ = get_parameter("entropy_radius").as_double();
     robot_radius_ = get_parameter("robot_radius").as_double();
+    use_entropy_calc_ = get_parameter("use_entropy_calc").as_bool();
 
     // Create separate callback groups for each service client
     nav_to_pose_callback_group_ = this->create_callback_group(
@@ -155,13 +163,14 @@ private:
   nav_msgs::msg::OccupancyGrid map_data_;
   std::vector<std::pair<int, int>> frontiers_;
   std::vector<double> entropies_;
+  std::vector<int> unknowns_;
   std::pair<double, double> robot_position_;
 
   double viewpoint_depth_;
   bool is_sim_;
   double entropy_radius_ = 2.5;
   bool use_naive_;
-  bool path_valid_;
+  bool use_entropy_calc_;
   bool use_action_client_;
   int best_frontier_idx_;
   double robot_radius_;
@@ -205,19 +214,30 @@ private:
   void selectNextBest()
   {
     if (best_frontier_idx_ >= 0 && best_frontier_idx_ < static_cast<int>(entropies_.size())) {
+      RCLCPP_INFO(get_logger(), "Replanning and selecting next best goal...");
+      if (use_entropy_calc_) {
       // Erase most recently selected frontier and its entropy
       entropies_.erase(entropies_.begin() + best_frontier_idx_);
       frontiers_.erase(frontiers_.begin() + best_frontier_idx_);
 
-      // Pick new one
-      double best_possible_entropy;
-      auto min_iterator = std::min_element(entropies_.begin(), entropies_.end());
-      best_possible_entropy = *min_iterator;
-      best_frontier_idx_ = std::distance(entropies_.begin(), min_iterator);
-
+      // Find and return next best entropy and index
+      auto [index, entropy] = bestEntropyIndexScore();
+      best_frontier_idx_ = index;
       RCLCPP_INFO(
         get_logger(), "Selecting frontier %d, with entropy reduction %f", best_frontier_idx_,
-        best_possible_entropy);
+        entropy);
+      } else {
+      // Erase most recently selected frontier and its score
+      unknowns_.erase(unknowns_.begin() + best_frontier_idx_);
+      frontiers_.erase(frontiers_.begin() + best_frontier_idx_);
+
+      // Find and return next best score and index
+      auto [index, score] = bestUnknownsIndexScore();
+      best_frontier_idx_ = index;
+      RCLCPP_INFO(
+        get_logger(), "Selecting frontier %d, with best score %d", best_frontier_idx_,
+        score);
+      }
 
       publishToNav2ActionClient(frontiers_.at(best_frontier_idx_));
     } else {
@@ -230,8 +250,7 @@ private:
     map_data_ = *msg;
 
     auto current_state = this->get_current_state();
-    if (current_state.id() == lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE)
-    {
+    if (current_state.id() == lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE) {
       // Get the robot's current viewpoint position from the transform
       auto robot_vp_position = getRobotViewpoint();
       if (robot_vp_position) {
@@ -469,10 +488,17 @@ private:
 
   std::pair<int, int> bestScoreFrontier()
   {
-    double total_entropy = calculateMapEntropy();
-    RCLCPP_INFO(get_logger(), "Total Map Entropy %f", total_entropy);
-    // Reset list of entropies
-    entropies_.clear();
+    double total_entropy;
+    // Establish baseline and reset for preferred scoring approach
+    if (use_entropy_calc_) {
+      total_entropy = calculateMapEntropy();
+      RCLCPP_INFO(get_logger(), "Total Map Entropy %f", total_entropy);
+      // Reset list of entropies
+      entropies_.clear();
+    } else {
+      // reset unknowns list
+      unknowns_.clear();
+    }
 
     // Loop through all frontiers and get score
     for (size_t i = 0; i < frontiers_.size(); ++i) {
@@ -480,22 +506,53 @@ private:
       int idx = frontier.second * map_data_.info.width + frontier.first;
       int unknowns = countUnknownCellsWithinRadius(idx, entropy_radius_);
 
-      // calculate current reduced entropy and place in list
-      entropies_.emplace_back(
-        total_entropy - (unknowns * calculateEntropy(-1)) +
-        (unknowns * calculateEntropy(0)));
+      if (use_entropy_calc_) {
+        // calculate current reduced entropy and place in list
+        entropies_.emplace_back(
+          total_entropy - (unknowns * calculateEntropy(-1)) +
+          (unknowns * calculateEntropy(0)));
+      } else {
+        unknowns_.emplace_back(unknowns);
+      }
     }
 
-    // Select least entropy from list and find index
-    double best_possible_entropy;
-    auto min_iterator = std::min_element(entropies_.begin(), entropies_.end());
-    best_possible_entropy = *min_iterator;
-    best_frontier_idx_ = std::distance(entropies_.begin(), min_iterator);
+    if (use_entropy_calc_) {
+      // Find and return best entropy and index
+      auto [index, entropy] = bestEntropyIndexScore();
+      best_frontier_idx_ = index;
+      RCLCPP_INFO(
+        get_logger(), "Selecting frontier %d, with entropy reduction %f", best_frontier_idx_,
+        entropy);
+    } else {
+      // Find and return best score and index
+      auto [index, score] = bestUnknownsIndexScore();
+      best_frontier_idx_ = index;
+      RCLCPP_INFO(
+        get_logger(), "Selecting frontier %d, with best score %d", best_frontier_idx_,
+        score);
+    }
 
-    RCLCPP_INFO(
-      get_logger(), "Selecting frontier %d, with entropy reduction %f", best_frontier_idx_,
-      best_possible_entropy);
     return frontiers_.at(best_frontier_idx_);
+  }
+
+  std::pair<int, double> bestEntropyIndexScore()
+  {
+    // Select least entropy from list and find index
+    auto min_iterator = std::min_element(entropies_.begin(), entropies_.end());
+    double best_possible_entropy = *min_iterator;
+    int best_frontier_idx_ = std::distance(entropies_.begin(), min_iterator);
+
+    return std::make_pair(best_frontier_idx_, best_possible_entropy);
+  }
+
+  std::pair<int, int> bestUnknownsIndexScore()
+  {
+    // Select most converted unknowns from list and find index
+    auto max_iterator = std::max_element(unknowns_.begin(), unknowns_.end());
+    int best_possible_unknowns = *max_iterator;
+    int best_frontier_idx_ = std::distance(unknowns_.begin(), max_iterator);
+
+    return std::make_pair(best_frontier_idx_, best_possible_unknowns);
   }
 
   double calculateMapEntropy()
