@@ -15,6 +15,8 @@
 #include <lifecycle_msgs/srv/get_state.hpp>
 #include <cmath>
 #include <vector>
+#include <utility>
+#include <random>
 #include <algorithm>
 
 
@@ -34,6 +36,8 @@ public:
     auto entropy_radius_des = rcl_interfaces::msg::ParameterDescriptor{};
     auto robot_radius_des = rcl_interfaces::msg::ParameterDescriptor{};
     auto entropy_calc_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto use_sampling_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto sampling_threshold_des = rcl_interfaces::msg::ParameterDescriptor{};
 
     // Parameter Descriptions and Declarations
     use_naive_des.description = "Choose to use naive frontier selection or entropy reduction";
@@ -50,8 +54,15 @@ public:
     robot_radius_des.description =
       "The radius around the robot in [m] to determine if a frontier is too close";
     declare_parameter("robot_radius", 0.35, robot_radius_des);
-    entropy_calc_des.description = "Choose whether to calculate entropy or select based on raw unknown count";
+    entropy_calc_des.description =
+      "Choose whether to calculate entropy or select based on raw unknown count";
     declare_parameter("use_entropy_calc", false, entropy_calc_des);
+    use_sampling_des.description =
+      "Choose whether to use sampling to decrease computational load with many frontiers";
+    declare_parameter("use_sampling", false, use_sampling_des);
+    sampling_threshold_des.description =
+      "The threshold at which after this many frontiers, the calculation will be sampled";
+    declare_parameter("sampling_threshold", 500, sampling_threshold_des);
 
     // Get Parameters
     is_sim_ = get_parameter("use_sim_time").as_bool();
@@ -61,6 +72,8 @@ public:
     entropy_radius_ = get_parameter("entropy_radius").as_double();
     robot_radius_ = get_parameter("robot_radius").as_double();
     use_entropy_calc_ = get_parameter("use_entropy_calc").as_bool();
+    use_sampling_ = get_parameter("use_sampling").as_bool();
+    sampling_threshold = get_parameter("sampling_threshold").as_int();
 
     // Create separate callback groups for each service client
     nav_to_pose_callback_group_ = this->create_callback_group(
@@ -162,6 +175,7 @@ private:
   // Data objects
   nav_msgs::msg::OccupancyGrid map_data_;
   std::vector<std::pair<int, int>> frontiers_;
+  std::vector<std::pair<int, int>> sampled_frontiers_;
   std::vector<double> entropies_;
   std::vector<int> unknowns_;
   std::pair<double, double> robot_position_;
@@ -171,6 +185,8 @@ private:
   double entropy_radius_ = 2.5;
   bool use_naive_;
   bool use_entropy_calc_;
+  bool use_sampling_;
+  int sampling_threshold;
   bool use_action_client_;
   int best_frontier_idx_;
   double robot_radius_;
@@ -198,12 +214,20 @@ private:
       RCLCPP_INFO(get_logger(), "Success, waiting for arrival.");
     } else if (msg->data == "Aborted") {
       RCLCPP_WARN(get_logger(), "Goal aborted... selecting next candidate.");
-      selectNextBest();
+      if (use_entropy_calc_ && static_cast<int>(frontiers_.size()) > sampling_threshold) {
+        selectNextBest(sampled_frontiers_);
+      } else {
+        selectNextBest(frontiers_);
+      }
     } else if (msg->data == "Canceled") {
       RCLCPP_WARN(get_logger(), "Goal Cancelled.");
     } else if (msg->data == "Rejected") {
       RCLCPP_WARN(get_logger(), "Goal rejected... selecting next candidate.");
-      selectNextBest();
+      if (use_entropy_calc_ && static_cast<int>(frontiers_.size()) > sampling_threshold) {
+        selectNextBest(sampled_frontiers_);
+      } else {
+        selectNextBest(frontiers_);
+      }
     } else if (msg->data == "Unknown") {
       RCLCPP_DEBUG(get_logger(), "Unknown Response");
     } else {
@@ -211,35 +235,35 @@ private:
     }
   }
 
-  void selectNextBest()
+  void selectNextBest(std::vector<std::pair<int, int>> & frontiers)
   {
     if (best_frontier_idx_ >= 0 && best_frontier_idx_ < static_cast<int>(entropies_.size())) {
       RCLCPP_INFO(get_logger(), "Replanning and selecting next best goal...");
       if (use_entropy_calc_) {
-      // Erase most recently selected frontier and its entropy
-      entropies_.erase(entropies_.begin() + best_frontier_idx_);
-      frontiers_.erase(frontiers_.begin() + best_frontier_idx_);
+        // Erase most recently selected frontier and its entropy
+        entropies_.erase(entropies_.begin() + best_frontier_idx_);
+        frontiers.erase(frontiers.begin() + best_frontier_idx_);
 
-      // Find and return next best entropy and index
-      auto [index, entropy] = bestEntropyIndexScore();
-      best_frontier_idx_ = index;
-      RCLCPP_INFO(
-        get_logger(), "Selecting frontier %d, with entropy reduction %f", best_frontier_idx_,
-        entropy);
+        // Find and return next best entropy and index
+        auto [index, entropy] = bestEntropyIndexScore();
+        best_frontier_idx_ = index;
+        RCLCPP_INFO(
+          get_logger(), "Selecting frontier %d, with entropy reduction %f", best_frontier_idx_,
+          entropy);
       } else {
-      // Erase most recently selected frontier and its score
-      unknowns_.erase(unknowns_.begin() + best_frontier_idx_);
-      frontiers_.erase(frontiers_.begin() + best_frontier_idx_);
+        // Erase most recently selected frontier and its score
+        unknowns_.erase(unknowns_.begin() + best_frontier_idx_);
+        frontiers.erase(frontiers.begin() + best_frontier_idx_);
 
-      // Find and return next best score and index
-      auto [index, score] = bestUnknownsIndexScore();
-      best_frontier_idx_ = index;
-      RCLCPP_INFO(
-        get_logger(), "Selecting frontier %d, with best score %d", best_frontier_idx_,
-        score);
+        // Find and return next best score and index
+        auto [index, score] = bestUnknownsIndexScore();
+        best_frontier_idx_ = index;
+        RCLCPP_INFO(
+          get_logger(), "Selecting frontier %d, with best score %d", best_frontier_idx_,
+          score);
       }
 
-      publishToNav2ActionClient(frontiers_.at(best_frontier_idx_));
+      publishToNav2ActionClient(frontiers.at(best_frontier_idx_));
     } else {
       RCLCPP_WARN(get_logger(), "Mismatch in index. Skipping reset...");
     }
@@ -378,8 +402,11 @@ private:
         {
           return distanceToRobot(f1) < distanceToRobot(f2);
         });
+    } else if (use_sampling_ && static_cast<int>(frontiers_.size()) > sampling_threshold) {
+      goal_frontier = bestScoringFrontier(sampleRandomFrontiers(frontiers_, sampling_threshold));
+      RCLCPP_DEBUG(get_logger(), "Using sampling to get best frontier");
     } else {
-      goal_frontier = bestScoreFrontier();
+      goal_frontier = bestScoringFrontier(frontiers_);
     }
 
     if (!use_action_client_) {
@@ -486,7 +513,35 @@ private:
     return unknown_count;
   }
 
-  std::pair<int, int> bestScoreFrontier()
+  std::vector<std::pair<int, int>> sampleRandomFrontiers(
+    const std::vector<std::pair<int,
+    int>> & frontiers, size_t sample_size)
+  {
+    std::vector<std::pair<int, int>> sampled_frontiers_;
+
+    // No need to sample if frontiers is already small enough
+    if (frontiers.size() <= sample_size) {
+      return frontiers;
+    }
+
+    // Generate a list of indices from 0 to frontiers.size() - 1
+    std::vector<size_t> indices(frontiers.size());
+    std::iota(indices.begin(), indices.end(), 0);   // Fill with 0, 1, ..., frontiers.size()-1
+
+    // Set up random engine and shuffle the indices
+    std::random_device rd;
+    std::mt19937 gen(rd());    // Mersenne Twister engine
+    std::shuffle(indices.begin(), indices.end(), gen);
+
+    // Select the first sample_size indices
+    for (size_t i = 0; i < sample_size; ++i) {
+      sampled_frontiers_.push_back(frontiers[indices[i]]);
+    }
+
+    return sampled_frontiers_;
+  }
+
+  std::pair<int, int> bestScoringFrontier(const std::vector<std::pair<int, int>> & frontiers)
   {
     double total_entropy;
     // Establish baseline and reset for preferred scoring approach
@@ -501,8 +556,8 @@ private:
     }
 
     // Loop through all frontiers and get score
-    for (size_t i = 0; i < frontiers_.size(); ++i) {
-      const auto & frontier = frontiers_.at(i);
+    for (size_t i = 0; i < frontiers.size(); ++i) {
+      const auto & frontier = frontiers.at(i);
       int idx = frontier.second * map_data_.info.width + frontier.first;
       int unknowns = countUnknownCellsWithinRadius(idx, entropy_radius_);
 
@@ -532,7 +587,7 @@ private:
         score);
     }
 
-    return frontiers_.at(best_frontier_idx_);
+    return frontiers.at(best_frontier_idx_);
   }
 
   std::pair<int, double> bestEntropyIndexScore()
