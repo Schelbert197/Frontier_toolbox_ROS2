@@ -517,7 +517,7 @@ private:
     const std::vector<std::pair<int,
     int>> & frontiers, size_t sample_size)
   {
-    std::vector<std::pair<int, int>> sampled_frontiers_;
+    sampled_frontiers_.clear();
 
     // No need to sample if frontiers is already small enough
     if (frontiers.size() <= sample_size) {
