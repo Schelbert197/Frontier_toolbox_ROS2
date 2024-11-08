@@ -12,3 +12,4 @@ frontier_explorer:
 nav_to_pose:
   ros__parameters:
     pose_frame: "map"
+    republish_same_goal: false

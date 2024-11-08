@@ -62,6 +62,10 @@ public:
     declare_parameter("pose_frame", "map", param);
     pose_frame_ = get_parameter("pose_frame").get_parameter_value().get<std::string>();
     goal_msg_.pose.header.frame_id = pose_frame_;
+    auto repub = rcl_interfaces::msg::ParameterDescriptor{};
+    repub.description = "The frame in which poses are sent.";
+    declare_parameter("republish_same_goal", true, repub);
+    repub_same_goal_ = get_parameter("republish_same_goal").as_bool();
 
     // Timers
     timer_ = create_wall_timer(
@@ -112,6 +116,7 @@ private:
   result_ = nullptr;
   std::shared_future<std::shared_ptr<action_msgs::srv::CancelGoal_Response>> cancel_result_future_;
   bool cancel_and_replan_ = false;
+  bool repub_same_goal_;
   
   bool are_goals_equal(const geometry_msgs::msg::Pose& pose1, const geometry_msgs::msg::Pose& pose2) {
   const double epsilon = 1e-5;  // Define tolerance level
@@ -154,7 +159,7 @@ private:
     new_pose.position.y = request->y;
     new_pose.orientation = rpy_to_quaternion(0.0, 0.0, request->theta);
     
-    if (goal_handle_ && are_goals_equal(goal_msg_.pose.pose, new_pose)) {
+    if (goal_handle_ && repub_same_goal_ && are_goals_equal(goal_msg_.pose.pose, new_pose)) {
       RCLCPP_INFO(this->get_logger(), "Received goal is the same as the current one. Continuing...");
       return;
     }

@@ -4,6 +4,7 @@
 #include "std_msgs/msg/string.hpp"
 #include "nav_client_cpp/srv/nav_to_pose.hpp"
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include "visualization_msgs/msg/marker.hpp"
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 #include <tf2/LinearMath/Quaternion.h>
@@ -17,6 +18,7 @@
 #include <vector>
 #include <utility>
 #include <random>
+#include <optional>
 #include <algorithm>
 
 
@@ -111,6 +113,8 @@ public:
       "jackal_goal", 10, std::bind(
         &FrontierExplorationNode::goalPubCallback, this,
         std::placeholders::_1));
+
+    pub_goal_marker_ = create_publisher<visualization_msgs::msg::Marker>("/vp", 10);
     return nav2_util::CallbackReturn::SUCCESS;
   }
 
@@ -119,6 +123,7 @@ public:
     RCLCPP_INFO(get_logger(), "Activating...");
     goal_publisher_->on_activate();
     map_with_frontiers_pub_->on_activate();
+    pub_goal_marker_->on_activate();
 
     // Create the service clients in on_activate
     nav_to_pose_client_ = this->create_client<nav_client_cpp::srv::NavToPose>(
@@ -164,6 +169,8 @@ private:
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::OccupancyGrid>>
   map_with_frontiers_pub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr goal_sucess_subscriber_;
+  std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<visualization_msgs::msg::Marker>>
+  pub_goal_marker_;
 
   // Services for action node
   rclcpp::CallbackGroup::SharedPtr nav_to_pose_callback_group_;
@@ -179,6 +186,7 @@ private:
   std::vector<double> entropies_;
   std::vector<int> unknowns_;
   std::pair<double, double> robot_position_;
+  std::optional<std::pair<double, double>> robot_vp_position_;
 
   double viewpoint_depth_;
   bool is_sim_;
@@ -276,8 +284,8 @@ private:
     auto current_state = this->get_current_state();
     if (current_state.id() == lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE) {
       // Get the robot's current viewpoint position from the transform
-      auto robot_vp_position = getRobotViewpoint();
-      if (robot_vp_position) {
+      robot_vp_position_ = getRobotViewpoint();
+      if (robot_vp_position_) {
         findFrontiers();
         cleanupFrontiers();
         publishGoalFrontier();
@@ -316,12 +324,64 @@ private:
       double x_adj = x + std::cos(yaw) * viewpoint_depth_;
       double y_adj = y + std::sin(yaw) * viewpoint_depth_;
 
+      if (isPositionOutsideMap(map_data_, x_adj, y_adj)) {
+        x_adj = 0.0;
+        y_adj = 0.0;
+      }
+      publishViewpoint(x_adj, y_adj);
+
       RCLCPP_INFO(get_logger(), "Got new robot position at x,y: %f, %f", x, y);
+      RCLCPP_INFO(get_logger(), "Got new viewpoint at %f, %f", x_adj, y_adj);
       return std::make_optional(std::make_pair(x_adj, y_adj));
     } catch (const tf2::TransformException & ex) {
       RCLCPP_ERROR(get_logger(), "Error getting transform: %s", ex.what());
       return std::nullopt;
     }
+  }
+
+  bool isPositionOutsideMap(
+    const nav_msgs::msg::OccupancyGrid &map,
+    const double &robot_x, const double &robot_y)
+{
+    // Get map properties
+    double map_origin_x = map.info.origin.position.x;
+    double map_origin_y = map.info.origin.position.y;
+    double map_resolution = map.info.resolution;
+    int map_width = map.info.width;
+    int map_height = map.info.height;
+
+    // Convert robot position to grid coordinates
+    int grid_x = static_cast<int>((robot_x - map_origin_x) / map_resolution);
+    int grid_y = static_cast<int>((robot_y - map_origin_y) / map_resolution);
+
+    // Check if the robot's grid position is out of bounds
+    if (grid_x < 0 || grid_x >= map_width || grid_y < 0 || grid_y >= map_height) {
+        return true;  // Position is outside the map
+    }
+    return false;  // Position is within the map
+}
+
+  void publishViewpoint(double x, double y)
+  {
+    visualization_msgs::msg::Marker viewpoint;
+    viewpoint.header.frame_id = "/map";
+    viewpoint.header.stamp = get_clock()->now();
+    viewpoint.id = 0;
+    viewpoint.type = visualization_msgs::msg::Marker::CYLINDER;
+    viewpoint.action = visualization_msgs::msg::Marker::ADD;
+    viewpoint.pose.position.x = x;
+    viewpoint.pose.position.y = y;
+    viewpoint.pose.position.z = 0.01;
+    // viewpoint.pose.orientation = orientation;
+    viewpoint.scale.x = 0.05;
+    viewpoint.scale.y = 0.05;
+    viewpoint.scale.z = 0.05;
+    viewpoint.color.r = 1.0f;
+    viewpoint.color.g = 0.5f;
+    viewpoint.color.b = 0.0f;
+    viewpoint.color.a = 1.0;
+
+    pub_goal_marker_->publish(viewpoint);
   }
 
   void findFrontiers()
@@ -397,11 +457,24 @@ private:
 
     std::pair<int, int> goal_frontier;
     if (use_naive_ == true) {
-      goal_frontier = *std::min_element(
-        frontiers_.begin(), frontiers_.end(), [this](const auto & f1, const auto & f2)
-        {
-          return distanceToRobot(f1) < distanceToRobot(f2);
-        });
+      // Using naive algorithm
+      if (use_sampling_ && static_cast<int>(frontiers_.size()) > sampling_threshold) {
+        // Using sampling method if selected to make direct comparison
+        sampled_frontiers_ = sampleRandomFrontiers(frontiers_, sampling_threshold);
+        goal_frontier = *std::min_element(
+          sampled_frontiers_.begin(), sampled_frontiers_.end(),
+          [this](const auto & f1, const auto & f2)
+          {
+            return distanceToRobotVP(f1) < distanceToRobotVP(f2);
+          });
+      } else {
+        // Default method
+        goal_frontier = *std::min_element(
+          frontiers_.begin(), frontiers_.end(), [this](const auto & f1, const auto & f2)
+          {
+            return distanceToRobotVP(f1) < distanceToRobotVP(f2);
+          });
+      }
     } else if (use_sampling_ && static_cast<int>(frontiers_.size()) > sampling_threshold) {
       goal_frontier = bestScoringFrontier(sampleRandomFrontiers(frontiers_, sampling_threshold));
       RCLCPP_DEBUG(get_logger(), "Using sampling to get best frontier");
@@ -457,6 +530,16 @@ private:
   {
     auto [fx, fy] = cellToWorld(frontier);
     auto [rx, ry] = robot_position_;
+    return std::hypot(fx - rx, fy - ry);
+  }
+
+  double distanceToRobotVP(const std::pair<int, int> & frontier)
+  {
+    auto [fx, fy] = cellToWorld(frontier);
+    double rx = 0.0, ry = 0.0; // Initialize rx and ry
+    if (robot_vp_position_) { // Assign values if robot_vp_position_ is set
+      std::tie(rx, ry) = *robot_vp_position_;   // Dereferencing pointer :O
+    }
     return std::hypot(fx - rx, fy - ry);
   }
 

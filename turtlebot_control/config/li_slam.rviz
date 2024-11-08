@@ -417,6 +417,19 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /received_global_plan
       Value: true
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Marker
+      Namespaces:
+        "": true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /vp
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -451,7 +464,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 8.580423355102539
+      Distance: 9.222177505493164
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
