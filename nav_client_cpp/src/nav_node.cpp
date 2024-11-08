@@ -159,7 +159,7 @@ private:
     new_pose.position.y = request->y;
     new_pose.orientation = rpy_to_quaternion(0.0, 0.0, request->theta);
     
-    if (goal_handle_ && repub_same_goal_ && are_goals_equal(goal_msg_.pose.pose, new_pose)) {
+    if (goal_handle_ && !repub_same_goal_ && are_goals_equal(goal_msg_.pose.pose, new_pose)) {
       RCLCPP_INFO(this->get_logger(), "Received goal is the same as the current one. Continuing...");
       return;
     }
