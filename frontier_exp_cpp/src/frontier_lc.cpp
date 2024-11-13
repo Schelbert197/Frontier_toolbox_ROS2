@@ -1,25 +1,29 @@
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_lifecycle/lifecycle_node.hpp>
+#include <nav2_util/lifecycle_node.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include "std_srvs/srv/empty.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "nav_client_cpp/srv/nav_to_pose.hpp"
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include "visualization_msgs/msg/marker.hpp"
+#include "visualization_msgs/msg/marker_array.hpp"
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#include <rclcpp_lifecycle/lifecycle_node.hpp>
 #include <rcl_interfaces/msg/parameter_descriptor.hpp>
-#include <nav2_util/lifecycle_node.hpp>
 #include "lifecycle_msgs/msg/state.hpp"
 #include <lifecycle_msgs/srv/get_state.hpp>
+#include <opencv2/core.hpp>
 #include <cmath>
 #include <vector>
+#include <map>
 #include <utility>
 #include <random>
 #include <optional>
 #include <algorithm>
+#include <cstdlib> // For generating random colors
 
 
 class FrontierExplorationNode : public nav2_util::LifecycleNode,
@@ -115,6 +119,11 @@ public:
         std::placeholders::_1));
 
     pub_goal_marker_ = create_publisher<visualization_msgs::msg::Marker>("/vp", 10);
+
+    clusters_pub_ =
+      create_publisher<visualization_msgs::msg::MarkerArray>(
+      "/clusters",
+      rclcpp::QoS(rclcpp::KeepLast(1)).durability(rclcpp::DurabilityPolicy::TransientLocal));
     return nav2_util::CallbackReturn::SUCCESS;
   }
 
@@ -124,6 +133,7 @@ public:
     goal_publisher_->on_activate();
     map_with_frontiers_pub_->on_activate();
     pub_goal_marker_->on_activate();
+    clusters_pub_->on_activate();
 
     // Create the service clients in on_activate
     nav_to_pose_client_ = this->create_client<nav_client_cpp::srv::NavToPose>(
@@ -139,6 +149,8 @@ public:
     RCLCPP_INFO(get_logger(), "Deactivating...");
     goal_publisher_->on_deactivate();
     map_with_frontiers_pub_->on_deactivate();
+    pub_goal_marker_->on_deactivate();
+    clusters_pub_->on_deactivate();
     // Reset navigation clients
     nav_to_pose_client_.reset();
     cancel_nav_client_.reset();
@@ -171,6 +183,8 @@ private:
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr goal_sucess_subscriber_;
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<visualization_msgs::msg::Marker>>
   pub_goal_marker_;
+  std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<visualization_msgs::msg::MarkerArray>>
+  clusters_pub_;
 
   // Services for action node
   rclcpp::CallbackGroup::SharedPtr nav_to_pose_callback_group_;
@@ -187,6 +201,7 @@ private:
   std::vector<int> unknowns_;
   std::pair<double, double> robot_position_;
   std::optional<std::pair<double, double>> robot_vp_position_;
+  std::set<int> active_marker_ids_;
 
   double viewpoint_depth_;
   bool is_sim_;
@@ -203,17 +218,6 @@ private:
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_;
   rclcpp::TimerBase::SharedPtr timer_;
-
-  void activation_callback()
-  {
-    // stuff
-    auto current_state = this->get_current_state();
-
-    if (current_state.id() == lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE) {
-      RCLCPP_INFO(get_logger(), "Callback is present. Triggering activation.");
-      this->activate();
-    }
-  }
 
   void goalPubCallback(const std_msgs::msg::String::SharedPtr msg)
   {
@@ -288,6 +292,14 @@ private:
       if (robot_vp_position_) {
         findFrontiers();
         cleanupFrontiers();
+
+        // clustering stuff
+        publishClustersAsMarkers(
+          clusterFrontiers(
+            frontiers_, 3.0,
+            5), "/map", map_data_.info.resolution, 0.06);
+        // end clustering stuff
+
         publishGoalFrontier();
         publishMapWithFrontiers();
       } else {
@@ -340,9 +352,9 @@ private:
   }
 
   bool isPositionOutsideMap(
-    const nav_msgs::msg::OccupancyGrid &map,
-    const double &robot_x, const double &robot_y)
-{
+    const nav_msgs::msg::OccupancyGrid & map,
+    const double & robot_x, const double & robot_y)
+  {
     // Get map properties
     double map_origin_x = map.info.origin.position.x;
     double map_origin_y = map.info.origin.position.y;
@@ -356,10 +368,10 @@ private:
 
     // Check if the robot's grid position is out of bounds
     if (grid_x < 0 || grid_x >= map_width || grid_y < 0 || grid_y >= map_height) {
-        return true;  // Position is outside the map
+      return true;    // Position is outside the map
     }
     return false;  // Position is within the map
-}
+  }
 
   void publishViewpoint(double x, double y)
   {
@@ -443,6 +455,173 @@ private:
     frontiers_ = valid_frontiers;
   }
 
+  void publishClustersAsMarkers(
+    const std::map<int, std::vector<std::pair<int, int>>> & clusters,
+    const std::string & frame_id,
+    float resolution,
+    float z_level = 0.0)
+  {
+
+    // Set to track active cluster IDs
+    std::set<int> active_cluster_ids;
+
+    // Clear old markers
+    clearOldMarkers();
+
+    visualization_msgs::msg::MarkerArray marker_array;
+
+    // Iterate through clusters and create markers
+    for (const auto & [cluster_id, points] : clusters) {
+      visualization_msgs::msg::Marker marker;
+      marker.header.frame_id = frame_id;
+      marker.header.stamp = rclcpp::Clock().now();
+      marker.ns = "cluster_" + std::to_string(cluster_id);
+      marker.id = cluster_id;    // Unique ID per cluster
+      marker.type = visualization_msgs::msg::Marker::POINTS;
+      marker.action = visualization_msgs::msg::Marker::ADD;
+      marker.scale.x = resolution;    // Size of points
+      marker.scale.y = resolution;
+
+      // Randomly generate a unique color for each cluster
+      marker.color.r = static_cast<float>(std::rand() % 255) / 255.0;
+      marker.color.g = static_cast<float>(std::rand() % 255) / 255.0;
+      marker.color.b = static_cast<float>(std::rand() % 255) / 255.0;
+      marker.color.a = 1.0;    // Fully opaque
+
+      // Add all points in the cluster
+      // Use cellToWorld for marker placement
+      for (const auto & point : points) {
+        auto [world_x, world_y] = cellToWorld(point);
+        geometry_msgs::msg::Point p;
+        p.x = world_x;
+        p.y = world_y;
+        p.z = z_level;      // Optional z-level (e.g., ground plane)
+        marker.points.push_back(p);
+      }
+
+      marker_array.markers.push_back(marker);
+
+      // Track the marker ID
+      active_marker_ids_.insert(cluster_id);
+    }
+
+    // Publish the marker array
+    clusters_pub_->publish(marker_array);
+  }
+
+  void clearOldMarkers()
+  {
+    visualization_msgs::msg::MarkerArray clear_array;
+
+// Iterate over the list of previously published markers
+    for (int id : active_marker_ids_) {
+      visualization_msgs::msg::Marker marker;
+      marker.header.frame_id = "map";    // Replace with your frame if needed
+      marker.header.stamp = rclcpp::Clock().now();
+      marker.ns = "cluster_markers";    // Namespace for the markers
+      marker.id = id;                  // Use the active marker ID
+      marker.action = visualization_msgs::msg::Marker::DELETE;    // Set action to DELETE
+      clear_array.markers.push_back(marker);
+    }
+
+    // Publish the deletion markers
+    clusters_pub_->publish(clear_array);
+
+    // Clear the active_marker_ids_ list to reset tracking
+    active_marker_ids_.clear();
+  }
+
+  // Function to perform DBSCAN
+  std::vector<int> performDBSCAN(const cv::Mat & points, float eps, int min_samples)
+  {
+    std::vector<int> labels(points.rows, -1);    // Initialize labels to -1 (noise)
+    int cluster_id = 0;
+
+    // Helper to calculate neighbors
+    auto find_neighbors = [&](int idx) {
+        std::vector<int> neighbors;
+        for (int i = 0; i < points.rows; ++i) {
+          if (cv::norm(points.row(idx) - points.row(i)) <= eps) {
+            neighbors.push_back(i);
+          }
+        }
+        return neighbors;
+      };
+
+    // Core DBSCAN logic
+    for (int i = 0; i < points.rows; ++i) {
+      if (labels.at(i) != -1) {
+        continue;                         // Skip already labeled points
+
+      }
+      auto neighbors = find_neighbors(i);
+      if (static_cast<int>(neighbors.size()) < min_samples) {
+        labels.at(i) = -1;        // Mark as noise
+        continue;
+      }
+
+      // Start a new cluster
+      labels.at(i) = cluster_id;
+      std::vector<int> to_expand = neighbors;
+
+      while (!to_expand.empty()) {
+        int pt = to_expand.back();
+        to_expand.pop_back();
+
+        if (labels[pt] == -1) {
+          labels[pt] = cluster_id;          // Change noise to border point
+        }
+
+        if (labels[pt] != -1) {
+          continue;                            // Skip if already processed
+
+        }
+        labels[pt] = cluster_id;
+        auto new_neighbors = find_neighbors(pt);
+        if (static_cast<int>(new_neighbors.size()) >= min_samples) {
+          to_expand.insert(to_expand.end(), new_neighbors.begin(), new_neighbors.end());
+        }
+      }
+
+      cluster_id++;
+    }
+
+    return labels;
+  }
+
+  // Main clustering function
+  std::map<int, std::vector<std::pair<int, int>>> clusterFrontiers(
+    const std::vector<std::pair<int, int>> & frontiers, float eps,
+    int min_samples)
+  {
+    cv::Mat points;
+    for (const auto & f : frontiers) {
+      points.push_back(cv::Vec2f(f.first, f.second));
+    }
+
+    auto labels = performDBSCAN(points, eps, min_samples);
+
+    // Organize clusters
+    std::map<int, std::vector<std::pair<int, int>>> clusters;
+    clusters.clear();
+    for (size_t i = 0; i < frontiers.size(); ++i) {
+      int label = labels.at(i);
+      if (label >= 0) {      // Ignore noise
+        clusters[label].emplace_back(frontiers.at(i));
+      }
+    }
+
+    RCLCPP_INFO(get_logger(), "Number of frontiers: %ld", frontiers.size());
+    // Print cluster information
+    for (const auto & [id, cluster] : clusters) {
+      std::cout << "Cluster " << id << " has " << cluster.size() << " points\n";
+    }
+
+    RCLCPP_INFO(get_logger(), "Number of clusters: %ld", clusters.size());
+    return clusters;
+  }
+
+
   bool tooClose(const std::pair<int, int> & frontier)
   {
     return distanceToRobot(frontier) <= robot_radius_;
@@ -519,7 +698,7 @@ private:
 
     for (const auto & frontier : frontiers_) {
       int idx = frontier.second * modified_map.info.width + frontier.first;
-      modified_map.data[idx] = 50;       // Mark frontiers in the map
+      modified_map.data.at(idx) = 50;       // Mark frontiers in the map
     }
 
     map_with_frontiers_pub_->publish(modified_map);
@@ -618,7 +797,7 @@ private:
 
     // Select the first sample_size indices
     for (size_t i = 0; i < sample_size; ++i) {
-      sampled_frontiers_.push_back(frontiers[indices[i]]);
+      sampled_frontiers_.push_back(frontiers[indices.at(i)]);
     }
 
     return sampled_frontiers_;

@@ -18,6 +18,7 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(nav_client_cpp REQUIRED)
+find_package(OpenCV REQUIRED)
 
 add_executable(frontier_lc src/frontier_lc.cpp)
 ament_target_dependencies(frontier_lc 
@@ -31,6 +32,7 @@ tf2
 tf2_ros 
 tf2_geometry_msgs
 std_srvs
+OpenCV
 nav_client_cpp)
 
 target_include_directories(frontier_lc PUBLIC
