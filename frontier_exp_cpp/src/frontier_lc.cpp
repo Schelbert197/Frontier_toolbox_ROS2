@@ -15,6 +15,7 @@
 #include <rcl_interfaces/msg/parameter_descriptor.hpp>
 #include "lifecycle_msgs/msg/state.hpp"
 #include <lifecycle_msgs/srv/get_state.hpp>
+#include "frontier_exp_cpp/frontier_helper.hpp"
 #include <opencv2/core.hpp>
 #include <cmath>
 #include <vector>
@@ -336,7 +337,7 @@ private:
       double x_adj = x + std::cos(yaw) * viewpoint_depth_;
       double y_adj = y + std::sin(yaw) * viewpoint_depth_;
 
-      if (isPositionOutsideMap(map_data_, x_adj, y_adj)) {
+      if (FrontierHelper::isPositionOutsideMap(map_data_, x_adj, y_adj)) {
         x_adj = 0.0;
         y_adj = 0.0;
       }
@@ -349,28 +350,6 @@ private:
       RCLCPP_ERROR(get_logger(), "Error getting transform: %s", ex.what());
       return std::nullopt;
     }
-  }
-
-  bool isPositionOutsideMap(
-    const nav_msgs::msg::OccupancyGrid & map,
-    const double & robot_x, const double & robot_y)
-  {
-    // Get map properties
-    double map_origin_x = map.info.origin.position.x;
-    double map_origin_y = map.info.origin.position.y;
-    double map_resolution = map.info.resolution;
-    int map_width = map.info.width;
-    int map_height = map.info.height;
-
-    // Convert robot position to grid coordinates
-    int grid_x = static_cast<int>((robot_x - map_origin_x) / map_resolution);
-    int grid_y = static_cast<int>((robot_y - map_origin_y) / map_resolution);
-
-    // Check if the robot's grid position is out of bounds
-    if (grid_x < 0 || grid_x >= map_width || grid_y < 0 || grid_y >= map_height) {
-      return true;    // Position is outside the map
-    }
-    return false;  // Position is within the map
   }
 
   void publishViewpoint(double x, double y)
@@ -406,7 +385,7 @@ private:
     for (int y = 0; y < height; ++y) {
       for (int x = 0; x < width; ++x) {
         int idx = y * width + x;
-        if (data[idx] == -1 && hasFreeNeighbor(x, y)) {
+        if (data[idx] == -1 && FrontierHelper::hasFreeNeighbor(map_data_, x, y)) {
           frontiers_.emplace_back(x, y);
         }
       }
@@ -421,24 +400,6 @@ private:
     RCLCPP_DEBUG(get_logger(), "%s", ss.str().c_str());
   }
 
-  bool hasFreeNeighbor(int x, int y)
-  {
-    int height = map_data_.info.height;
-    int width = map_data_.info.width;
-    const auto & data = map_data_.data;
-
-    std::vector<std::pair<int, int>> neighbors = {{x - 1, y}, {x + 1, y}, {x, y - 1}, {x, y + 1}};
-    for (const auto & [nx, ny] : neighbors) {
-      if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-        int idx = ny * width + nx;
-        if (data[idx] == 0) {       // Free cell
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
   void cleanupFrontiers()
   {
     std::vector<std::pair<int, int>> valid_frontiers;
@@ -447,7 +408,7 @@ private:
     for (const auto & frontier : frontiers_) {
       int idx = frontier.second * map_data_.info.width + frontier.first;
       if (data[idx] == -1 &&
-        hasFreeNeighbor(frontier.first, frontier.second) && !tooClose(frontier))
+        FrontierHelper::hasFreeNeighbor(map_data_, frontier.first, frontier.second) && !tooClose(frontier))
       {
         valid_frontiers.push_back(frontier);
       }
@@ -469,34 +430,6 @@ private:
 
     // Iterate through clusters and create markers
     for (const auto & [cluster_id, points] : clusters) {
-      // visualization_msgs::msg::Marker marker;
-      // marker.header.frame_id = frame_id;
-      // marker.header.stamp = rclcpp::Clock().now();
-      // marker.ns = "cluster_" + std::to_string(cluster_id);
-      // marker.id = cluster_id;    // Unique ID per cluster
-      // marker.type = visualization_msgs::msg::Marker::POINTS;
-      // marker.action = visualization_msgs::msg::Marker::ADD;
-      // marker.scale.x = resolution;    // Size of points
-      // marker.scale.y = resolution;
-
-      // // Randomly generate a unique color for each cluster
-      // marker.color.r = static_cast<float>(std::rand() % 255) / 255.0;
-      // marker.color.g = static_cast<float>(std::rand() % 255) / 255.0;
-      // marker.color.b = static_cast<float>(std::rand() % 255) / 255.0;
-      // marker.color.a = 1.0;    // Fully opaque
-
-      // // Add all points in the cluster
-      // // Use cellToWorld for marker placement
-      // for (const auto & point : points) {
-      //   auto [world_x, world_y] = cellToWorld(point);
-      //   geometry_msgs::msg::Point p;
-      //   p.x = world_x;
-      //   p.y = world_y;
-      //   p.z = z_level;      // Optional z-level (e.g., ground plane)
-      //   marker.points.push_back(p);
-      // }
-
-      // marker_array.markers.push_back(marker);
       // Create POINTS marker for the cluster
       visualization_msgs::msg::Marker points_marker;
       points_marker.header.frame_id = frame_id;
@@ -599,67 +532,6 @@ private:
     active_marker_ids_.clear();
   }
 
-  // Function to perform DBSCAN
-  std::vector<int> performDBSCAN(const cv::Mat & points, float eps, int min_samples)
-  {
-    std::vector<int> labels(points.rows, -1);    // Initialize labels to -1 (noise)
-    int cluster_id = 0;
-
-    // Helper to calculate neighbors
-    auto find_neighbors = [&](int idx) {
-        std::vector<int> neighbors;
-        for (int i = 0; i < points.rows; ++i) {
-          if (cv::norm(points.row(idx) - points.row(i)) <= eps) {
-            neighbors.push_back(i);
-          }
-        }
-        return neighbors;
-      };
-
-    // Core DBSCAN logic
-    for (int i = 0; i < points.rows; ++i) {
-      if (labels.at(i) != -1) {
-        continue;                         // Skip already labeled points
-
-      }
-      auto neighbors = find_neighbors(i);
-      if (static_cast<int>(neighbors.size()) < min_samples) {
-        labels.at(i) = -1;        // Mark as noise
-        continue;
-      }
-
-      // Start a new cluster
-      labels.at(i) = cluster_id;
-      std::vector<int> to_expand = neighbors;
-
-      while (!to_expand.empty()) {
-        int pt = to_expand.back();
-        to_expand.pop_back();
-
-        if (labels[pt] == -1) {
-          labels[pt] = cluster_id;          // Change noise to border point
-        }
-
-        if (labels[pt] != -1) {
-          continue;                            // Skip if already processed
-
-        }
-        // Check if the point is a valid core point
-        auto new_neighbors = find_neighbors(pt);
-        if (static_cast<int>(new_neighbors.size()) >= min_samples) {
-          to_expand.insert(to_expand.end(), new_neighbors.begin(), new_neighbors.end());
-        }
-
-        // Assign to cluster even if it's a border point (but not a new core point)
-        labels[pt] = cluster_id;
-      }
-
-      cluster_id++;
-    }
-
-    return labels;
-  }
-
   // Main clustering function
   std::map<int, std::vector<std::pair<int, int>>> clusterFrontiers(
     const std::vector<std::pair<int, int>> & frontiers, float eps,
@@ -670,7 +542,7 @@ private:
       points.push_back(cv::Vec2f(f.first, f.second));
     }
 
-    auto labels = performDBSCAN(points, eps, min_samples);
+    auto labels = FrontierHelper::performDBSCAN(points, eps, min_samples);
 
     // Organize clusters
     std::map<int, std::vector<std::pair<int, int>>> clusters;
@@ -817,52 +689,6 @@ private:
     return {world_x, world_y};
   }
 
-  int countUnknownCellsWithinRadius(int index, double rad)
-  {
-    int unknown_count = 0;
-
-    // Get map metadata
-    int width = static_cast<int>(map_data_.info.width);
-    int height = static_cast<int>(map_data_.info.height);
-    double resolution = map_data_.info.resolution;
-
-    // Calculate the center cell's row and column from the index
-    int center_row = index / width;
-    int center_col = index % width;
-
-    // Determine the search range in cells based on the radius
-    int range = static_cast<int>(std::round(rad / resolution));
-
-    // Loop through the square neighborhood around the center cell
-    for (int row = center_row - range; row <= center_row + range; ++row) {
-      for (int col = center_col - range; col <= center_col + range; ++col) {
-        // Skip cells outside the grid boundaries
-        if (row < 0 || row >= height || col < 0 || col >= width) {
-          continue;
-        }
-
-        // Compute the Euclidean distance from the center cell
-        double dist =
-          std::sqrt(std::pow(row - center_row, 2) + std::pow(col - center_col, 2)) * resolution;
-
-        // Only consider cells within the specified radius
-        if (dist <= rad) {
-          // Calculate the index of the current cell in the OccupancyGrid data
-          int cell_index = row * width + col;
-
-          // Check if the cell is unknown (-1)
-          if (map_data_.data[cell_index] == -1 &&
-            !occluded(col, row, center_col, center_row, width, map_data_.data))
-          {
-            unknown_count++;
-          }
-        }
-      }
-    }
-
-    return unknown_count;
-  }
-
   std::vector<std::pair<int, int>> sampleRandomFrontiers(
     const std::vector<std::pair<int,
     int>> & frontiers, size_t sample_size)
@@ -909,13 +735,13 @@ private:
     for (size_t i = 0; i < frontiers.size(); ++i) {
       const auto & frontier = frontiers.at(i);
       int idx = frontier.second * map_data_.info.width + frontier.first;
-      int unknowns = countUnknownCellsWithinRadius(idx, entropy_radius_);
+      int unknowns = FrontierHelper::countUnknownCellsWithinRadius(map_data_, idx, entropy_radius_);
 
       if (use_entropy_calc_) {
         // calculate current reduced entropy and place in list
         entropies_.emplace_back(
-          total_entropy - (unknowns * calculateEntropy(-1)) +
-          (unknowns * calculateEntropy(0)));
+          total_entropy - (unknowns * FrontierHelper::calculateEntropy(-1)) +
+          (unknowns * FrontierHelper::calculateEntropy(0)));
       } else {
         unknowns_.emplace_back(unknowns);
       }
@@ -964,52 +790,9 @@ private:
   {
     double entropy;
     for (const auto & cell : map_data_.data) {
-      entropy += calculateEntropy(cell);
+      entropy += FrontierHelper::calculateEntropy(cell);
     }
     return entropy;
-  }
-
-  double calculateEntropy(int cell_value)
-  {
-    double v;
-    if (cell_value == -1) {
-      v = 0.5;
-    } else if (cell_value == 0) {
-      v = 0.01;
-    } else if (cell_value == 100) {
-      v = 0.99;
-    }
-    return -1 * ((v * log(v)) + ((1 - v) * log(1 - v)));
-  }
-
-  bool occluded(int x1, int y1, int x2, int y2, int width, const std::vector<int8_t> & map_data)
-  {
-    // Bresenham's line algorithm to generate points between (x1, y1) and (x2, y2)
-    int dx = abs(x2 - x1);
-    int dy = abs(y2 - y1);
-    int sx = (x1 < x2) ? 1 : -1;
-    int sy = (y1 < y2) ? 1 : -1;
-    int err = dx - dy;
-
-    while (x1 != x2 || y1 != y2) {
-      // Check if the current cell is occupied (value 100 means occupied)
-      int cell_index = y1 * width + x1;
-      if (map_data[cell_index] == 100) {
-        return true;  // There is an occupied cell between the two points
-      }
-
-      int e2 = 2 * err;
-      if (e2 > -dy) {
-        err -= dy;
-        x1 += sx;
-      }
-      if (e2 < dx) {
-        err += dx;
-        y1 += sy;
-      }
-    }
-
-    return false;  // No occupied cells found between the two points
   }
 
 };

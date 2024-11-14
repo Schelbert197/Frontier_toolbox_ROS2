@@ -5,7 +5,7 @@ frontier_explorer:
     use_action_client_node: true
     entropy_radius: 2.4
     robot_radius: 0.35
-    use_entropy_calc: false
+    use_entropy_calc: true
     use_sampling: true
     sampling_threshold: 250
 
