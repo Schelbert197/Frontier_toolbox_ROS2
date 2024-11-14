@@ -149,7 +149,7 @@ std::vector<int> FrontierHelper::performDBSCAN(
   // Core DBSCAN logic
   for (int i = 0; i < points.rows; ++i) {
     if (labels.at(i) != -1) {
-      continue;                         // Skip already labeled points
+      continue;                 // Skip already labeled points
     }
     auto neighbors = find_neighbors(i);
     if (static_cast<int>(neighbors.size()) < min_samples) {
@@ -166,11 +166,11 @@ std::vector<int> FrontierHelper::performDBSCAN(
       to_expand.pop_back();
 
       if (labels[pt] == -1) {
-        labels[pt] = cluster_id;          // Change noise to border point
+        labels[pt] = cluster_id;  // Change noise to border point
       }
 
       if (labels[pt] != -1) {
-        continue;                            // Skip if already processed
+        continue;                // Skip if already processed
       }
 
       // Check if the point is a valid core point
