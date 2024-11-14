@@ -258,7 +258,7 @@ private:
         frontiers.erase(frontiers.begin() + best_frontier_idx_);
 
         // Find and return next best entropy and index
-        auto [index, entropy] = bestEntropyIndexScore();
+        auto [index, entropy] = FrontierHelper::bestEntropyIndexScore(entropies_);
         best_frontier_idx_ = index;
         RCLCPP_INFO(
           get_logger(), "Selecting frontier %d, with entropy reduction %f", best_frontier_idx_,
@@ -269,7 +269,7 @@ private:
         frontiers.erase(frontiers.begin() + best_frontier_idx_);
 
         // Find and return next best score and index
-        auto [index, score] = bestUnknownsIndexScore();
+        auto [index, score] = FrontierHelper::bestUnknownsIndexScore(unknowns_);
         best_frontier_idx_ = index;
         RCLCPP_INFO(
           get_logger(), "Selecting frontier %d, with best score %d", best_frontier_idx_,
@@ -408,7 +408,9 @@ private:
     for (const auto & frontier : frontiers_) {
       int idx = frontier.second * map_data_.info.width + frontier.first;
       if (data[idx] == -1 &&
-        FrontierHelper::hasFreeNeighbor(map_data_, frontier.first, frontier.second) && !tooClose(frontier))
+        FrontierHelper::hasFreeNeighbor(
+          map_data_, frontier.first,
+          frontier.second) && !tooClose(frontier))
       {
         valid_frontiers.push_back(frontier);
       }
@@ -495,7 +497,9 @@ private:
       active_marker_ids_.insert(cluster_id);
     }
 
-    RCLCPP_INFO(get_logger(), "Publishing MarkerArray with %ld markers", marker_array.markers.size());
+    RCLCPP_INFO(
+      get_logger(), "Publishing MarkerArray with %ld markers",
+      marker_array.markers.size());
     // Publish the marker array
     clusters_pub_->publish(marker_array);
   }
@@ -514,7 +518,7 @@ private:
       marker_points.id = id;                  // Use the active marker ID
       marker_points.action = visualization_msgs::msg::Marker::DELETE;    // Set action to DELETE
       clear_array.markers.push_back(marker_points);
-      
+
       // delete text markers
       visualization_msgs::msg::Marker marker_text;
       marker_text.header.frame_id = frame_id;
@@ -722,7 +726,7 @@ private:
     double total_entropy;
     // Establish baseline and reset for preferred scoring approach
     if (use_entropy_calc_) {
-      total_entropy = calculateMapEntropy();
+      total_entropy = FrontierHelper::calculateMapEntropy(map_data_.data);
       RCLCPP_INFO(get_logger(), "Total Map Entropy %f", total_entropy);
       // Reset list of entropies
       entropies_.clear();
@@ -749,14 +753,14 @@ private:
 
     if (use_entropy_calc_) {
       // Find and return best entropy and index
-      auto [index, entropy] = bestEntropyIndexScore();
+      auto [index, entropy] = FrontierHelper::bestEntropyIndexScore(entropies_);
       best_frontier_idx_ = index;
       RCLCPP_INFO(
         get_logger(), "Selecting frontier %d, with entropy reduction %f", best_frontier_idx_,
         entropy);
     } else {
       // Find and return best score and index
-      auto [index, score] = bestUnknownsIndexScore();
+      auto [index, score] = FrontierHelper::bestUnknownsIndexScore(unknowns_);
       best_frontier_idx_ = index;
       RCLCPP_INFO(
         get_logger(), "Selecting frontier %d, with best score %d", best_frontier_idx_,
@@ -766,34 +770,6 @@ private:
     return frontiers.at(best_frontier_idx_);
   }
 
-  std::pair<int, double> bestEntropyIndexScore()
-  {
-    // Select least entropy from list and find index
-    auto min_iterator = std::min_element(entropies_.begin(), entropies_.end());
-    double best_possible_entropy = *min_iterator;
-    int best_frontier_idx_ = std::distance(entropies_.begin(), min_iterator);
-
-    return std::make_pair(best_frontier_idx_, best_possible_entropy);
-  }
-
-  std::pair<int, int> bestUnknownsIndexScore()
-  {
-    // Select most converted unknowns from list and find index
-    auto max_iterator = std::max_element(unknowns_.begin(), unknowns_.end());
-    int best_possible_unknowns = *max_iterator;
-    int best_frontier_idx_ = std::distance(unknowns_.begin(), max_iterator);
-
-    return std::make_pair(best_frontier_idx_, best_possible_unknowns);
-  }
-
-  double calculateMapEntropy()
-  {
-    double entropy;
-    for (const auto & cell : map_data_.data) {
-      entropy += FrontierHelper::calculateEntropy(cell);
-    }
-    return entropy;
-  }
 
 };
 

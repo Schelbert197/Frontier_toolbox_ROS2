@@ -1,4 +1,5 @@
 #include "frontier_exp_cpp/frontier_helper.hpp"
+#include <algorithm>
 
 bool FrontierHelper::isPositionOutsideMap(
   const nav_msgs::msg::OccupancyGrid & map,
@@ -116,7 +117,7 @@ int FrontierHelper::countUnknownCellsWithinRadius(
 
         // Check if the cell is unknown (-1)
         if (map_data.data.at(cell_index) == -1 &&
-          !occluded(col, row, center_col, center_row, width, map_data.data))
+          !FrontierHelper::occluded(col, row, center_col, center_row, width, map_data.data))
         {
           unknown_count++;
         }
@@ -187,4 +188,33 @@ std::vector<int> FrontierHelper::performDBSCAN(
   }
 
   return labels;
+}
+
+std::pair<int, double> FrontierHelper::bestEntropyIndexScore(const std::vector<double> & entropies)
+{
+  // Select least entropy from list and find index
+  auto min_iterator = std::min_element(entropies.begin(), entropies.end());
+  double best_possible_entropy = *min_iterator;
+  int best_frontier_idx_ = std::distance(entropies.begin(), min_iterator);
+
+  return std::make_pair(best_frontier_idx_, best_possible_entropy);
+}
+
+std::pair<int, int> FrontierHelper::bestUnknownsIndexScore(const std::vector<int> & unknowns)
+{
+  // Select most converted unknowns from list and find index
+  auto max_iterator = std::max_element(unknowns.begin(), unknowns.end());
+  int best_possible_unknowns = *max_iterator;
+  int best_frontier_idx_ = std::distance(unknowns.begin(), max_iterator);
+
+  return std::make_pair(best_frontier_idx_, best_possible_unknowns);
+}
+
+double FrontierHelper::calculateMapEntropy(const std::vector<int8_t> & map_data)
+{
+  double entropy = 0.0;
+  for (const auto & cell : map_data) {
+    entropy += FrontierHelper::calculateEntropy(cell);  // Ensure this method is implemented
+  }
+  return entropy;
 }

@@ -21,7 +21,6 @@ public:
     const nav_msgs::msg::OccupancyGrid & map,
     const double & robot_x, const double & robot_y);
 
-
   /// @brief Checks if a map cell has at least one free neighboring cell.
   /// @param map_data The occupancy grid map.
   /// @param x The x-coordinate of the cell.
@@ -30,7 +29,6 @@ public:
   static bool hasFreeNeighbor(
     nav_msgs::msg::OccupancyGrid & map_data,
     int x, int y);
-
 
   /// @brief Checks if the line between two points is occluded.
   /// @param x1 The x-coordinate of the start point.
@@ -44,12 +42,10 @@ public:
     int x1, int y1, int x2, int y2, int width,
     const std::vector<int8_t> & map_data);
 
-
   /// @brief Calculates the entropy of a map cell value.
   /// @param cell_value The occupancy value of the cell (-1: unknown, 0: free, 100: occupied).
   /// @return The entropy value for the given cell.
   static double calculateEntropy(int cell_value);
-
 
   /// @brief Counts the number of unknown cells within a given radius of a specified index.
   /// @param map_data The occupancy grid map data.
@@ -61,7 +57,6 @@ public:
     int index,
     double rad);
 
-
   /// @brief Performs DBSCAN clustering on a set of points.
   /// @param points A matrix of points (each row represents a point).
   /// @param eps The maximum distance between points to be considered neighbors.
@@ -72,6 +67,21 @@ public:
     const cv::Mat & points,
     float eps,
     int min_samples);
+
+  /// @brief Selects the least entropy from a list and returns its index and value.
+  /// @param entropies A vector containing entropy values.
+  /// @return A pair containing the index of the best frontier and the corresponding entropy value.
+  static std::pair<int, double> bestEntropyIndexScore(const std::vector<double> & entropies);
+
+  /// @brief Selects the most converted unknowns from a list and returns its index and value.
+  /// @param unknowns A vector containing the number of unknown cells.
+  /// @return A pair containing the index of the best frontier and the corresponding number of unknowns.
+  static std::pair<int, int> bestUnknownsIndexScore(const std::vector<int> & unknowns);
+
+  /// @brief Calculates the entropy of a map based on its data.
+  /// @param map_data A vector containing the occupancy grid data.
+  /// @return The total entropy of the map.
+  static double calculateMapEntropy(const std::vector<int8_t> & map_data);
 };
 
 #endif // FRONTIER_HELPER_HPP
