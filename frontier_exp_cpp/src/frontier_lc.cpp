@@ -462,11 +462,8 @@ private:
     float z_level = 0.0)
   {
 
-    // Set to track active cluster IDs
-    std::set<int> active_cluster_ids;
-
     // Clear old markers
-    clearOldMarkers();
+    clearOldMarkers(frame_id);
 
     visualization_msgs::msg::MarkerArray marker_array;
 
@@ -546,7 +543,7 @@ private:
       visualization_msgs::msg::Marker text_marker;
       text_marker.header.frame_id = frame_id;
       text_marker.header.stamp = rclcpp::Clock().now();
-      text_marker.ns = "cluster_text";
+      text_marker.ns = "cluster_label";
       text_marker.id = cluster_id + clusters.size(); // Ensure unique ID
       text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
       text_marker.action = visualization_msgs::msg::Marker::ADD;
@@ -565,23 +562,34 @@ private:
       active_marker_ids_.insert(cluster_id);
     }
 
+    RCLCPP_INFO(get_logger(), "Publishing MarkerArray with %ld markers", marker_array.markers.size());
     // Publish the marker array
     clusters_pub_->publish(marker_array);
   }
 
-  void clearOldMarkers()
+  void clearOldMarkers(const std::string & frame_id)
   {
     visualization_msgs::msg::MarkerArray clear_array;
 
-// Iterate over the list of previously published markers
+    // Iterate over the list of previously published markers
     for (int id : active_marker_ids_) {
-      visualization_msgs::msg::Marker marker;
-      marker.header.frame_id = "map";    // Replace with your frame if needed
-      marker.header.stamp = rclcpp::Clock().now();
-      marker.ns = "cluster_markers";    // Namespace for the markers
-      marker.id = id;                  // Use the active marker ID
-      marker.action = visualization_msgs::msg::Marker::DELETE;    // Set action to DELETE
-      clear_array.markers.push_back(marker);
+      // delete point markers
+      visualization_msgs::msg::Marker marker_points;
+      marker_points.header.frame_id = frame_id;
+      marker_points.header.stamp = rclcpp::Clock().now();
+      marker_points.ns = "cluster_points";    // Namespace for the markers
+      marker_points.id = id;                  // Use the active marker ID
+      marker_points.action = visualization_msgs::msg::Marker::DELETE;    // Set action to DELETE
+      clear_array.markers.push_back(marker_points);
+      
+      // delete text markers
+      visualization_msgs::msg::Marker marker_text;
+      marker_text.header.frame_id = frame_id;
+      marker_text.header.stamp = rclcpp::Clock().now();
+      marker_text.ns = "cluster_label";    // Namespace for the markers
+      marker_text.id = id + active_marker_ids_.size();                  // Use the active marker ID
+      marker_text.action = visualization_msgs::msg::Marker::DELETE;    // Set action to DELETE
+      clear_array.markers.push_back(marker_text);
     }
 
     // Publish the deletion markers
