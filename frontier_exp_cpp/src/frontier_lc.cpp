@@ -296,7 +296,7 @@ private:
         // clustering stuff
         publishClustersAsMarkers(
           clusterFrontiers(
-            frontiers_, 3.0,
+            frontiers_, 20.0,
             5), "/map", map_data_.info.resolution, 0.06);
         // end clustering stuff
 
@@ -472,34 +472,94 @@ private:
 
     // Iterate through clusters and create markers
     for (const auto & [cluster_id, points] : clusters) {
-      visualization_msgs::msg::Marker marker;
-      marker.header.frame_id = frame_id;
-      marker.header.stamp = rclcpp::Clock().now();
-      marker.ns = "cluster_" + std::to_string(cluster_id);
-      marker.id = cluster_id;    // Unique ID per cluster
-      marker.type = visualization_msgs::msg::Marker::POINTS;
-      marker.action = visualization_msgs::msg::Marker::ADD;
-      marker.scale.x = resolution;    // Size of points
-      marker.scale.y = resolution;
+      // visualization_msgs::msg::Marker marker;
+      // marker.header.frame_id = frame_id;
+      // marker.header.stamp = rclcpp::Clock().now();
+      // marker.ns = "cluster_" + std::to_string(cluster_id);
+      // marker.id = cluster_id;    // Unique ID per cluster
+      // marker.type = visualization_msgs::msg::Marker::POINTS;
+      // marker.action = visualization_msgs::msg::Marker::ADD;
+      // marker.scale.x = resolution;    // Size of points
+      // marker.scale.y = resolution;
+
+      // // Randomly generate a unique color for each cluster
+      // marker.color.r = static_cast<float>(std::rand() % 255) / 255.0;
+      // marker.color.g = static_cast<float>(std::rand() % 255) / 255.0;
+      // marker.color.b = static_cast<float>(std::rand() % 255) / 255.0;
+      // marker.color.a = 1.0;    // Fully opaque
+
+      // // Add all points in the cluster
+      // // Use cellToWorld for marker placement
+      // for (const auto & point : points) {
+      //   auto [world_x, world_y] = cellToWorld(point);
+      //   geometry_msgs::msg::Point p;
+      //   p.x = world_x;
+      //   p.y = world_y;
+      //   p.z = z_level;      // Optional z-level (e.g., ground plane)
+      //   marker.points.push_back(p);
+      // }
+
+      // marker_array.markers.push_back(marker);
+      // Create POINTS marker for the cluster
+      visualization_msgs::msg::Marker points_marker;
+      points_marker.header.frame_id = frame_id;
+      points_marker.header.stamp = rclcpp::Clock().now();
+      points_marker.ns = "cluster_points";
+      points_marker.id = cluster_id;  // Unique ID per cluster
+      points_marker.type = visualization_msgs::msg::Marker::POINTS;
+      points_marker.action = visualization_msgs::msg::Marker::ADD;
+      points_marker.scale.x = resolution;  // Size of points
+      points_marker.scale.y = resolution;
 
       // Randomly generate a unique color for each cluster
-      marker.color.r = static_cast<float>(std::rand() % 255) / 255.0;
-      marker.color.g = static_cast<float>(std::rand() % 255) / 255.0;
-      marker.color.b = static_cast<float>(std::rand() % 255) / 255.0;
-      marker.color.a = 1.0;    // Fully opaque
+      points_marker.color.r = static_cast<float>(std::rand() % 255) / 255.0;
+      points_marker.color.g = static_cast<float>(std::rand() % 255) / 255.0;
+      points_marker.color.b = static_cast<float>(std::rand() % 255) / 255.0;
+      points_marker.color.a = 1.0;  // Fully opaque
 
       // Add all points in the cluster
-      // Use cellToWorld for marker placement
+      geometry_msgs::msg::Point centroid;
+      centroid.x = 0.0;
+      centroid.y = 0.0;
+      centroid.z = z_level;
+
       for (const auto & point : points) {
         auto [world_x, world_y] = cellToWorld(point);
         geometry_msgs::msg::Point p;
         p.x = world_x;
         p.y = world_y;
         p.z = z_level;      // Optional z-level (e.g., ground plane)
-        marker.points.push_back(p);
+        points_marker.points.push_back(p);
+
+        // Accumulate centroid
+        centroid.x += world_x;
+        centroid.y += world_y;
       }
 
-      marker_array.markers.push_back(marker);
+      // Finalize centroid by averaging
+      centroid.x /= points.size();
+      centroid.y /= points.size();
+
+      marker_array.markers.push_back(points_marker);
+
+      // Create TEXT_VIEW_FACING marker for the cluster ID
+      visualization_msgs::msg::Marker text_marker;
+      text_marker.header.frame_id = frame_id;
+      text_marker.header.stamp = rclcpp::Clock().now();
+      text_marker.ns = "cluster_text";
+      text_marker.id = cluster_id + clusters.size(); // Ensure unique ID
+      text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+      text_marker.action = visualization_msgs::msg::Marker::ADD;
+      text_marker.scale.z = resolution * 3.0;  // Text size
+      text_marker.color.r = 1.0;
+      text_marker.color.g = 1.0;
+      text_marker.color.b = 1.0;
+      text_marker.color.a = 1.0;  // Fully opaque
+      text_marker.pose.position = centroid;
+      text_marker.pose.position.z += z_level + 0.1; // Slightly above points
+      text_marker.text = std::to_string(cluster_id);
+
+      marker_array.markers.push_back(text_marker);
 
       // Track the marker ID
       active_marker_ids_.insert(cluster_id);
@@ -576,11 +636,14 @@ private:
           continue;                            // Skip if already processed
 
         }
-        labels[pt] = cluster_id;
+        // Check if the point is a valid core point
         auto new_neighbors = find_neighbors(pt);
         if (static_cast<int>(new_neighbors.size()) >= min_samples) {
           to_expand.insert(to_expand.end(), new_neighbors.begin(), new_neighbors.end());
         }
+
+        // Assign to cluster even if it's a border point (but not a new core point)
+        labels[pt] = cluster_id;
       }
 
       cluster_id++;
@@ -611,14 +674,31 @@ private:
       }
     }
 
+    // Filter out small clusters
+    auto filtered_clusters = filterClusters(clusters, min_samples);
+
     RCLCPP_INFO(get_logger(), "Number of frontiers: %ld", frontiers.size());
     // Print cluster information
-    for (const auto & [id, cluster] : clusters) {
+    for (const auto & [id, cluster] : filtered_clusters) {
       std::cout << "Cluster " << id << " has " << cluster.size() << " points\n";
     }
 
-    RCLCPP_INFO(get_logger(), "Number of clusters: %ld", clusters.size());
-    return clusters;
+    RCLCPP_INFO(get_logger(), "Number of clusters: %ld", filtered_clusters.size());
+    return filtered_clusters;
+  }
+
+  // Filter out clusters smaller than min_samples
+  std::map<int, std::vector<std::pair<int, int>>> filterClusters(
+    const std::map<int, std::vector<std::pair<int, int>>> & clusters,
+    int min_samples)
+  {
+    std::map<int, std::vector<std::pair<int, int>>> filtered_clusters;
+    for (const auto & [id, cluster] : clusters) {
+      if (static_cast<int>(cluster.size()) >= min_samples) {
+        filtered_clusters[id] = cluster;
+      }
+    }
+    return filtered_clusters;
   }
 
 
