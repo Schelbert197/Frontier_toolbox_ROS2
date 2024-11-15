@@ -91,6 +91,10 @@ public:
   static std::vector<std::pair<int, int>> sampleRandomFrontiers(
     const std::vector<std::pair<int, int>> & frontiers,
     size_t sample_size);
+
+  static std::vector<std::pair<int, int>> getCentroidCells(
+    const nav_msgs::msg::OccupancyGrid & map,
+    std::vector<std::pair<float, float>> centroids);
 };
 
 #endif // FRONTIER_HELPER_HPP

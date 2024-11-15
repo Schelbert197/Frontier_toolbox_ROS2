@@ -248,3 +248,17 @@ std::vector<std::pair<int, int>> FrontierHelper::sampleRandomFrontiers(
 
     return sampled_frontiers;
 }
+
+std::vector<std::pair<int, int>> FrontierHelper::getCentroidCells(
+    const nav_msgs::msg::OccupancyGrid & map,
+    std::vector<std::pair<float, float>> centroids)
+{
+  std::vector<std::pair<int, int>> cell_clusters;
+
+  for (const auto & centroid : centroids) {
+    int cell_x = (centroid.first - map.info.origin.position.x)/map.info.resolution;
+    int cell_y = (centroid.second - map.info.origin.position.y)/map.info.resolution;
+    cell_clusters.emplace_back(std::make_pair(cell_x, cell_y));
+  }
+  return cell_clusters;
+}

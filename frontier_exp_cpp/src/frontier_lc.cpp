@@ -32,6 +32,7 @@ public:
 
     // Init Descriptions
     auto use_naive_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto use_clustering_des = rcl_interfaces::msg::ParameterDescriptor{};
     auto use_action_client_des = rcl_interfaces::msg::ParameterDescriptor{};
     auto viewpoint_depth_des = rcl_interfaces::msg::ParameterDescriptor{};
     auto entropy_radius_des = rcl_interfaces::msg::ParameterDescriptor{};
@@ -41,8 +42,11 @@ public:
     auto sampling_threshold_des = rcl_interfaces::msg::ParameterDescriptor{};
 
     // Parameter Descriptions and Declarations
-    use_naive_des.description = "Choose to use naive frontier selection or entropy reduction";
+    use_naive_des.description = "Choose to use naive frontier selection or mutual information";
     declare_parameter("use_naive", false, use_naive_des);
+    use_clustering_des.description =
+      "Choose to use clustering in the mutual information calculation";
+    declare_parameter("use_clustering", false, use_clustering_des);
     use_action_client_des.description =
       "Choose to use custom action client node (true) or just publish goal pose to nav2 (false)";
     declare_parameter("use_action_client_node", false, use_action_client_des);
@@ -68,6 +72,7 @@ public:
     // Get Parameters
     is_sim_ = get_parameter("use_sim_time").as_bool();
     use_naive_ = get_parameter("use_naive").as_bool();
+    use_clustering_ = get_parameter("use_clustering").as_bool();
     use_action_client_ = get_parameter("use_action_client_node").as_bool();
     viewpoint_depth_ = get_parameter("viewpoint_depth").as_double();
     entropy_radius_ = get_parameter("entropy_radius").as_double();
@@ -192,6 +197,7 @@ private:
   nav_msgs::msg::OccupancyGrid map_data_;
   std::vector<std::pair<int, int>> frontiers_;
   std::vector<std::pair<int, int>> sampled_frontiers_;
+  std::vector<std::pair<float, float>> frontier_cluster_centroids_;
   std::vector<double> entropies_;
   std::vector<int> unknowns_;
   std::pair<double, double> robot_position_;
@@ -202,8 +208,9 @@ private:
   bool is_sim_;
   double entropy_radius_ = 2.5;
   bool use_naive_;
-  bool use_entropy_calc_;
+  bool use_clustering_;
   bool use_sampling_;
+  bool use_entropy_calc_;
   int sampling_threshold;
   bool use_action_client_;
   int best_frontier_idx_;
@@ -288,12 +295,12 @@ private:
         findFrontiers();
         cleanupFrontiers();
 
-        // clustering stuff
-        publishClustersAsMarkers(
-          clusterFrontiers(
-            frontiers_, 20.0,
-            5), "/map", map_data_.info.resolution, 0.06);
-        // end clustering stuff
+        if (use_clustering_) {
+          publishClustersAsMarkers(
+            clusterFrontiers(
+              frontiers_, 20.0,
+              5), "/map", map_data_.info.resolution, 0.06);
+        }
 
         publishGoalFrontier();
         publishMapWithFrontiers();
@@ -466,6 +473,9 @@ private:
       centroid.x /= points.size();
       centroid.y /= points.size();
 
+      // Add the cluster centroids to the vector for later use
+      frontier_cluster_centroids_.emplace_back(centroid.x, centroid.y);
+
       marker_array.markers.push_back(points_marker);
 
       // Create TEXT_VIEW_FACING marker for the cluster ID
@@ -500,6 +510,7 @@ private:
 
   void clearOldMarkers(const std::string & frame_id)
   {
+    frontier_cluster_centroids_.clear(); // clear out old centroids
     visualization_msgs::msg::MarkerArray clear_array;
 
     // Iterate over the list of previously published markers
@@ -592,6 +603,15 @@ private:
       return;
     }
 
+    if (!use_action_client_) {
+      publishToNav2PlannerServer(selectGoal());
+    } else {
+      publishToNav2ActionClient(selectGoal());
+    }
+  }
+
+  std::pair<int, int> selectGoal()
+  {
     std::pair<int, int> goal_frontier;
     if (use_naive_ == true) {
       // Using naive algorithm
@@ -612,6 +632,11 @@ private:
             return distanceToRobotVP(f1) < distanceToRobotVP(f2);
           });
       }
+    } else if (use_clustering_) {
+      std::vector<std::pair<int, int>> cell_centroids = FrontierHelper::getCentroidCells(
+        map_data_,
+        frontier_cluster_centroids_);
+      goal_frontier = bestScoringFrontier(cell_centroids);
     } else if (use_sampling_ && static_cast<int>(frontiers_.size()) > sampling_threshold) {
       sampled_frontiers_ = FrontierHelper::sampleRandomFrontiers(frontiers_, sampling_threshold);
       goal_frontier = bestScoringFrontier(sampled_frontiers_);
@@ -620,11 +645,7 @@ private:
       goal_frontier = bestScoringFrontier(frontiers_);
     }
 
-    if (!use_action_client_) {
-      publishToNav2PlannerServer(goal_frontier);
-    } else {
-      publishToNav2ActionClient(goal_frontier);
-    }
+    return goal_frontier;
   }
 
   void publishToNav2ActionClient(const std::pair<int, int> & goal_frontier)
