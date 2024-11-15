@@ -2,6 +2,7 @@
 #define FRONTIER_HELPER_HPP
 
 #include <vector>
+#include <utility> // For std::pair
 #include <cmath>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <opencv2/core.hpp>
@@ -82,6 +83,14 @@ public:
   /// @param map_data A vector containing the occupancy grid data.
   /// @return The total entropy of the map.
   static double calculateMapEntropy(const std::vector<int8_t> & map_data);
+
+  /// @brief Randomly samples a specified number of frontiers from a given list.
+  /// @param frontiers The list of frontier coordinates (x, y).
+  /// @param sample_size The number of frontiers to sample.
+  /// @return A vector of sampled frontiers, up to the specified sample size.
+  static std::vector<std::pair<int, int>> sampleRandomFrontiers(
+    const std::vector<std::pair<int, int>> & frontiers,
+    size_t sample_size);
 };
 
 #endif // FRONTIER_HELPER_HPP

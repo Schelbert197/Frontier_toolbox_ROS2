@@ -1,7 +1,6 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
 #include <nav2_util/lifecycle_node.hpp>
-#include <nav_msgs/msg/occupancy_grid.hpp>
 #include "std_srvs/srv/empty.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "nav_client_cpp/srv/nav_to_pose.hpp"
@@ -17,13 +16,8 @@
 #include <lifecycle_msgs/srv/get_state.hpp>
 #include "frontier_exp_cpp/frontier_helper.hpp"
 #include <opencv2/core.hpp>
-#include <cmath>
-#include <vector>
 #include <map>
-#include <utility>
-#include <random>
 #include <optional>
-#include <algorithm>
 #include <cstdlib> // For generating random colors
 
 
@@ -343,8 +337,8 @@ private:
       }
       publishViewpoint(x_adj, y_adj);
 
-      RCLCPP_INFO(get_logger(), "Got new robot position at x,y: %f, %f", x, y);
-      RCLCPP_INFO(get_logger(), "Got new viewpoint at %f, %f", x_adj, y_adj);
+      RCLCPP_DEBUG(get_logger(), "Got new robot position at x,y: %f, %f", x, y);
+      RCLCPP_DEBUG(get_logger(), "Got new viewpoint at %f, %f", x_adj, y_adj);
       return std::make_optional(std::make_pair(x_adj, y_adj));
     } catch (const tf2::TransformException & ex) {
       RCLCPP_ERROR(get_logger(), "Error getting transform: %s", ex.what());
@@ -449,7 +443,7 @@ private:
       points_marker.color.b = static_cast<float>(std::rand() % 255) / 255.0;
       points_marker.color.a = 1.0;  // Fully opaque
 
-      // Add all points in the cluster
+      // Add all points in the cluster and create a centroid
       geometry_msgs::msg::Point centroid;
       centroid.x = 0.0;
       centroid.y = 0.0;
@@ -603,7 +597,7 @@ private:
       // Using naive algorithm
       if (use_sampling_ && static_cast<int>(frontiers_.size()) > sampling_threshold) {
         // Using sampling method if selected to make direct comparison
-        sampled_frontiers_ = sampleRandomFrontiers(frontiers_, sampling_threshold);
+        sampled_frontiers_ = FrontierHelper::sampleRandomFrontiers(frontiers_, sampling_threshold);
         goal_frontier = *std::min_element(
           sampled_frontiers_.begin(), sampled_frontiers_.end(),
           [this](const auto & f1, const auto & f2)
@@ -619,7 +613,8 @@ private:
           });
       }
     } else if (use_sampling_ && static_cast<int>(frontiers_.size()) > sampling_threshold) {
-      goal_frontier = bestScoringFrontier(sampleRandomFrontiers(frontiers_, sampling_threshold));
+      sampled_frontiers_ = FrontierHelper::sampleRandomFrontiers(frontiers_, sampling_threshold);
+      goal_frontier = bestScoringFrontier(sampled_frontiers_);
       RCLCPP_DEBUG(get_logger(), "Using sampling to get best frontier");
     } else {
       goal_frontier = bestScoringFrontier(frontiers_);
@@ -666,7 +661,7 @@ private:
     }
 
     map_with_frontiers_pub_->publish(modified_map);
-    RCLCPP_INFO(get_logger(), "Published map with highlighted frontiers.");
+    RCLCPP_DEBUG(get_logger(), "Published map with highlighted frontiers.");
   }
 
   double distanceToRobot(const std::pair<int, int> & frontier)
@@ -691,34 +686,6 @@ private:
     double world_x = map_data_.info.origin.position.x + (cell.first * map_data_.info.resolution);
     double world_y = map_data_.info.origin.position.y + (cell.second * map_data_.info.resolution);
     return {world_x, world_y};
-  }
-
-  std::vector<std::pair<int, int>> sampleRandomFrontiers(
-    const std::vector<std::pair<int,
-    int>> & frontiers, size_t sample_size)
-  {
-    sampled_frontiers_.clear();
-
-    // No need to sample if frontiers is already small enough
-    if (frontiers.size() <= sample_size) {
-      return frontiers;
-    }
-
-    // Generate a list of indices from 0 to frontiers.size() - 1
-    std::vector<size_t> indices(frontiers.size());
-    std::iota(indices.begin(), indices.end(), 0);   // Fill with 0, 1, ..., frontiers.size()-1
-
-    // Set up random engine and shuffle the indices
-    std::random_device rd;
-    std::mt19937 gen(rd());    // Mersenne Twister engine
-    std::shuffle(indices.begin(), indices.end(), gen);
-
-    // Select the first sample_size indices
-    for (size_t i = 0; i < sample_size; ++i) {
-      sampled_frontiers_.push_back(frontiers[indices.at(i)]);
-    }
-
-    return sampled_frontiers_;
   }
 
   std::pair<int, int> bestScoringFrontier(const std::vector<std::pair<int, int>> & frontiers)

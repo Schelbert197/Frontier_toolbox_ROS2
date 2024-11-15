@@ -1,5 +1,7 @@
 #include "frontier_exp_cpp/frontier_helper.hpp"
-#include <algorithm>
+#include <random> // Required for random number generation in implementation
+#include <algorithm> // Required for std::shuffle in implementation
+#include <numeric> // Required for std::iota in implementation
 
 bool FrontierHelper::isPositionOutsideMap(
   const nav_msgs::msg::OccupancyGrid & map,
@@ -217,4 +219,32 @@ double FrontierHelper::calculateMapEntropy(const std::vector<int8_t> & map_data)
     entropy += FrontierHelper::calculateEntropy(cell);  // Ensure this method is implemented
   }
   return entropy;
+}
+
+std::vector<std::pair<int, int>> FrontierHelper::sampleRandomFrontiers(
+    const std::vector<std::pair<int, int>> & frontiers, 
+    size_t sample_size)
+{
+    std::vector<std::pair<int, int>> sampled_frontiers;
+
+    // If the size of frontiers is less than or equal to the sample size, return the original frontiers
+    if (frontiers.size() <= sample_size) {
+        return frontiers;
+    }
+
+    // Create a list of indices from 0 to frontiers.size() - 1
+    std::vector<size_t> indices(frontiers.size());
+    std::iota(indices.begin(), indices.end(), 0); // Fill indices with sequential numbers
+
+    // Set up random engine and shuffle the indices
+    std::random_device rd;
+    std::mt19937 gen(rd()); // Mersenne Twister RNG
+    std::shuffle(indices.begin(), indices.end(), gen);
+
+    // Select the first 'sample_size' indices and fetch corresponding frontiers
+    for (size_t i = 0; i < sample_size; ++i) {
+        sampled_frontiers.push_back(frontiers[indices.at(i)]);
+    }
+
+    return sampled_frontiers;
 }
