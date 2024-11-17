@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <utility> // For std::pair
+#include <map>
 #include <cmath>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <opencv2/core.hpp>
@@ -92,9 +93,19 @@ public:
     const std::vector<std::pair<int, int>> & frontiers,
     size_t sample_size);
 
+  /// @brief Translates the centroid coordinates from the world meters to map cells.
+  /// @param map The occupancy grid map.
+  /// @param centroids The list of centroids to convert.
+  /// @return A vector of centroids as cells in the map.
   static std::vector<std::pair<int, int>> getCentroidCells(
     const nav_msgs::msg::OccupancyGrid & map,
     std::vector<std::pair<float, float>> centroids);
+
+  /// @brief Finds the cluster with the largest number of associated points.
+  /// @param clusters The hashmap of id's and their associated clustered points.
+  /// @return An integer representing the largest cluster.
+  static int findLargestCluster(
+    const std::map<int, std::vector<std::pair<int, int>>> & clusters);
 };
 
 #endif // FRONTIER_HELPER_HPP

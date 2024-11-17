@@ -203,12 +203,14 @@ private:
   std::pair<double, double> robot_position_;
   std::optional<std::pair<double, double>> robot_vp_position_;
   std::set<int> active_marker_ids_;
+  std::map<int, std::vector<std::pair<int, int>>> all_clusters_;
 
   double viewpoint_depth_;
   bool is_sim_;
   double entropy_radius_ = 2.5;
   bool use_naive_;
   bool use_clustering_;
+  bool eval_cluster_size_ = true;
   bool use_sampling_;
   bool use_entropy_calc_;
   int sampling_threshold;
@@ -296,10 +298,8 @@ private:
         cleanupFrontiers();
 
         if (use_clustering_) {
-          publishClustersAsMarkers(
-            clusterFrontiers(
-              frontiers_, 20.0,
-              5), "/map", map_data_.info.resolution, 0.06);
+          all_clusters_ = clusterFrontiers(frontiers_, 20.0, 5);
+          publishClustersAsMarkers(all_clusters_, "/map", map_data_.info.resolution, 0.06);
         }
 
         publishGoalFrontier();
@@ -633,10 +633,19 @@ private:
           });
       }
     } else if (use_clustering_) {
-      std::vector<std::pair<int, int>> cell_centroids = FrontierHelper::getCentroidCells(
+      if (eval_cluster_size_) {
+        std::vector<std::pair<int, int>> cell_centroids = FrontierHelper::getCentroidCells(
         map_data_,
         frontier_cluster_centroids_);
-      goal_frontier = bestScoringFrontier(cell_centroids);
+        int largest_cluster_id = FrontierHelper::findLargestCluster(all_clusters_);
+        // put code here to remove if too close or other things.
+        goal_frontier = cell_centroids.at(largest_cluster_id);
+      } else {
+        std::vector<std::pair<int, int>> cell_centroids = FrontierHelper::getCentroidCells(
+        map_data_,
+        frontier_cluster_centroids_);
+        goal_frontier = bestScoringFrontier(cell_centroids);
+      }
     } else if (use_sampling_ && static_cast<int>(frontiers_.size()) > sampling_threshold) {
       sampled_frontiers_ = FrontierHelper::sampleRandomFrontiers(frontiers_, sampling_threshold);
       goal_frontier = bestScoringFrontier(sampled_frontiers_);

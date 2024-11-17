@@ -222,43 +222,60 @@ double FrontierHelper::calculateMapEntropy(const std::vector<int8_t> & map_data)
 }
 
 std::vector<std::pair<int, int>> FrontierHelper::sampleRandomFrontiers(
-    const std::vector<std::pair<int, int>> & frontiers, 
-    size_t sample_size)
+  const std::vector<std::pair<int, int>> & frontiers,
+  size_t sample_size)
 {
-    std::vector<std::pair<int, int>> sampled_frontiers;
+  std::vector<std::pair<int, int>> sampled_frontiers;
 
-    // If the size of frontiers is less than or equal to the sample size, return the original frontiers
-    if (frontiers.size() <= sample_size) {
-        return frontiers;
-    }
+  // If the size of frontiers is less than or equal to the sample size, return the original frontiers
+  if (frontiers.size() <= sample_size) {
+    return frontiers;
+  }
 
-    // Create a list of indices from 0 to frontiers.size() - 1
-    std::vector<size_t> indices(frontiers.size());
-    std::iota(indices.begin(), indices.end(), 0); // Fill indices with sequential numbers
+  // Create a list of indices from 0 to frontiers.size() - 1
+  std::vector<size_t> indices(frontiers.size());
+  std::iota(indices.begin(), indices.end(), 0);   // Fill indices with sequential numbers
 
-    // Set up random engine and shuffle the indices
-    std::random_device rd;
-    std::mt19937 gen(rd()); // Mersenne Twister RNG
-    std::shuffle(indices.begin(), indices.end(), gen);
+  // Set up random engine and shuffle the indices
+  std::random_device rd;
+  std::mt19937 gen(rd());   // Mersenne Twister RNG
+  std::shuffle(indices.begin(), indices.end(), gen);
 
-    // Select the first 'sample_size' indices and fetch corresponding frontiers
-    for (size_t i = 0; i < sample_size; ++i) {
-        sampled_frontiers.push_back(frontiers[indices.at(i)]);
-    }
+  // Select the first 'sample_size' indices and fetch corresponding frontiers
+  for (size_t i = 0; i < sample_size; ++i) {
+    sampled_frontiers.push_back(frontiers[indices.at(i)]);
+  }
 
-    return sampled_frontiers;
+  return sampled_frontiers;
 }
 
 std::vector<std::pair<int, int>> FrontierHelper::getCentroidCells(
-    const nav_msgs::msg::OccupancyGrid & map,
-    std::vector<std::pair<float, float>> centroids)
+  const nav_msgs::msg::OccupancyGrid & map,
+  std::vector<std::pair<float, float>> centroids)
 {
   std::vector<std::pair<int, int>> cell_clusters;
 
   for (const auto & centroid : centroids) {
-    int cell_x = (centroid.first - map.info.origin.position.x)/map.info.resolution;
-    int cell_y = (centroid.second - map.info.origin.position.y)/map.info.resolution;
+    int cell_x = (centroid.first - map.info.origin.position.x) / map.info.resolution;
+    int cell_y = (centroid.second - map.info.origin.position.y) / map.info.resolution;
     cell_clusters.emplace_back(std::make_pair(cell_x, cell_y));
   }
   return cell_clusters;
+}
+
+int FrontierHelper::findLargestCluster(
+  const std::map<int, std::vector<std::pair<int,
+  int>>> & clusters)
+{
+  int largest_index = -1;   // Initialize to an invalid index
+  size_t max_size = 0;      // To store the largest size
+
+  for (const auto & cluster : clusters) {
+    if (cluster.second.size() > max_size) {
+      max_size = cluster.second.size();
+      largest_index = cluster.first;       // Update to the current cluster's index
+    }
+  }
+
+  return largest_index;   // Return the index of the largest cluster
 }
