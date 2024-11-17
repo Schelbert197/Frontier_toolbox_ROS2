@@ -210,7 +210,7 @@ private:
   double entropy_radius_ = 2.5;
   bool use_naive_;
   bool use_clustering_;
-  bool eval_cluster_size_ = true;
+  bool eval_cluster_size_ = false;
   bool use_sampling_;
   bool use_entropy_calc_;
   int sampling_threshold;
