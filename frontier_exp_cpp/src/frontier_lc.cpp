@@ -197,13 +197,13 @@ private:
   nav_msgs::msg::OccupancyGrid map_data_;
   std::vector<std::pair<int, int>> frontiers_;
   std::vector<std::pair<int, int>> sampled_frontiers_;
-  std::vector<std::pair<float, float>> frontier_cluster_centroids_;
   std::vector<double> entropies_;
   std::vector<int> unknowns_;
   std::pair<double, double> robot_position_;
+  std::pair<double, double> last_robot_position_;
   std::optional<std::pair<double, double>> robot_vp_position_;
   std::set<int> active_marker_ids_;
-  std::map<int, std::vector<std::pair<int, int>>> all_clusters_;
+  FrontierHelper::ClusterObj my_clusters_;
 
   double viewpoint_depth_;
   bool is_sim_;
@@ -217,6 +217,7 @@ private:
   bool use_action_client_;
   int best_frontier_idx_;
   double robot_radius_;
+  double EPSILON = 0.001;
 
   // Buffer objects
   tf2_ros::Buffer tf_buffer_;
@@ -253,36 +254,43 @@ private:
 
   void selectNextBest(std::vector<std::pair<int, int>> & frontiers)
   {
-    if (best_frontier_idx_ >= 0 && best_frontier_idx_ < static_cast<int>(entropies_.size())) {
-      RCLCPP_INFO(get_logger(), "Replanning and selecting next best goal...");
-      if (use_entropy_calc_) {
-        // Erase most recently selected frontier and its entropy
-        entropies_.erase(entropies_.begin() + best_frontier_idx_);
-        frontiers.erase(frontiers.begin() + best_frontier_idx_);
-
-        // Find and return next best entropy and index
-        auto [index, entropy] = FrontierHelper::bestEntropyIndexScore(entropies_);
-        best_frontier_idx_ = index;
-        RCLCPP_INFO(
-          get_logger(), "Selecting frontier %d, with entropy reduction %f", best_frontier_idx_,
-          entropy);
-      } else {
-        // Erase most recently selected frontier and its score
-        unknowns_.erase(unknowns_.begin() + best_frontier_idx_);
-        frontiers.erase(frontiers.begin() + best_frontier_idx_);
-
-        // Find and return next best score and index
-        auto [index, score] = FrontierHelper::bestUnknownsIndexScore(unknowns_);
-        best_frontier_idx_ = index;
-        RCLCPP_INFO(
-          get_logger(), "Selecting frontier %d, with best score %d", best_frontier_idx_,
-          score);
-      }
-
-      publishToNav2ActionClient(frontiers.at(best_frontier_idx_));
+    if (use_clustering_) {
+      int s_largest_cluster_id = FrontierHelper::findSecondLargestCluster(my_clusters_.clusters);
+      publishToNav2ActionClient(my_clusters_.cell_centroids.at(s_largest_cluster_id));
+      RCLCPP_INFO(get_logger(), "Replanning for second largest cluster");
     } else {
-      RCLCPP_WARN(get_logger(), "Mismatch in index. Skipping reset...");
+      if (best_frontier_idx_ >= 0 && best_frontier_idx_ < static_cast<int>(entropies_.size())) {
+        RCLCPP_INFO(get_logger(), "Replanning and selecting next best goal...");
+        if (use_entropy_calc_) {
+          // Erase most recently selected frontier and its entropy
+          entropies_.erase(entropies_.begin() + best_frontier_idx_);
+          frontiers.erase(frontiers.begin() + best_frontier_idx_);
+
+          // Find and return next best entropy and index
+          auto [index, entropy] = FrontierHelper::bestEntropyIndexScore(entropies_);
+          best_frontier_idx_ = index;
+          RCLCPP_INFO(
+            get_logger(), "Selecting frontier %d, with entropy reduction %f", best_frontier_idx_,
+            entropy);
+        } else {
+          // Erase most recently selected frontier and its score
+          unknowns_.erase(unknowns_.begin() + best_frontier_idx_);
+          frontiers.erase(frontiers.begin() + best_frontier_idx_);
+
+          // Find and return next best score and index
+          auto [index, score] = FrontierHelper::bestUnknownsIndexScore(unknowns_);
+          best_frontier_idx_ = index;
+          RCLCPP_INFO(
+            get_logger(), "Selecting frontier %d, with best score %d", best_frontier_idx_,
+            score);
+        }
+
+        publishToNav2ActionClient(frontiers.at(best_frontier_idx_));
+      } else {
+        RCLCPP_WARN(get_logger(), "Mismatch in index. Skipping reset...");
+      }
     }
+
   }
 
   void mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg)
@@ -298,8 +306,8 @@ private:
         cleanupFrontiers();
 
         if (use_clustering_) {
-          all_clusters_ = clusterFrontiers(frontiers_, 20.0, 5);
-          publishClustersAsMarkers(all_clusters_, "/map", map_data_.info.resolution, 0.06);
+          my_clusters_.clusters = clusterFrontiers(frontiers_, 20.0, 5);
+          publishClustersAsMarkers(my_clusters_.clusters, "/map", map_data_.info.resolution, 0.06);
         }
 
         publishGoalFrontier();
@@ -474,7 +482,7 @@ private:
       centroid.y /= points.size();
 
       // Add the cluster centroids to the vector for later use
-      frontier_cluster_centroids_.emplace_back(centroid.x, centroid.y);
+      my_clusters_.world_centroids.emplace_back(centroid.x, centroid.y);
 
       marker_array.markers.push_back(points_marker);
 
@@ -510,7 +518,7 @@ private:
 
   void clearOldMarkers(const std::string & frame_id)
   {
-    frontier_cluster_centroids_.clear(); // clear out old centroids
+    my_clusters_.world_centroids.clear(); // clear out old centroids
     visualization_msgs::msg::MarkerArray clear_array;
 
     // Iterate over the list of previously published markers
@@ -590,7 +598,6 @@ private:
     return filtered_clusters;
   }
 
-
   bool tooClose(const std::pair<int, int> & frontier)
   {
     return distanceToRobot(frontier) <= robot_radius_;
@@ -633,18 +640,40 @@ private:
           });
       }
     } else if (use_clustering_) {
+      my_clusters_.cell_centroids = FrontierHelper::getCentroidCells(
+        map_data_,
+        my_clusters_.world_centroids);
       if (eval_cluster_size_) {
-        std::vector<std::pair<int, int>> cell_centroids = FrontierHelper::getCentroidCells(
-        map_data_,
-        frontier_cluster_centroids_);
-        int largest_cluster_id = FrontierHelper::findLargestCluster(all_clusters_);
-        // put code here to remove if too close or other things.
-        goal_frontier = cell_centroids.at(largest_cluster_id);
+
+        int largest_cluster_id = FrontierHelper::findLargestCluster(my_clusters_.clusters);
+        goal_frontier = my_clusters_.cell_centroids.at(largest_cluster_id);
+        if (last_robot_position_ == robot_position_) {
+          goal_frontier =
+            my_clusters_.cell_centroids.at(
+            FrontierHelper::findSecondLargestCluster(
+              my_clusters_.
+              clusters));
+        }
       } else {
-        std::vector<std::pair<int, int>> cell_centroids = FrontierHelper::getCentroidCells(
-        map_data_,
-        frontier_cluster_centroids_);
-        goal_frontier = bestScoringFrontier(cell_centroids);
+        goal_frontier = bestScoringFrontier(my_clusters_.cell_centroids);
+        // if (tooClose(goal_frontier)) {
+        //   int largest_cluster_id = FrontierHelper::findLargestCluster(my_clusters_.clusters);
+        //   goal_frontier = my_clusters_.cell_centroids.at(largest_cluster_id);
+        // }
+        RCLCPP_INFO(
+          get_logger(),
+          "last_robot_position: %f, %f \nCurrent Robot Position: %f, %f", last_robot_position_.first, last_robot_position_.second,
+          robot_position_.first, robot_position_.second);
+        if (std::abs(last_robot_position_.first - robot_position_.first) < EPSILON &&
+          std::abs(last_robot_position_.second - robot_position_.second) < EPSILON)
+        {
+          goal_frontier =
+            my_clusters_.cell_centroids.at(
+            FrontierHelper::findSecondLargestCluster(
+              my_clusters_.
+              clusters));
+          RCLCPP_INFO(get_logger(), "Going to second largest cluster because robot hasn't moved");
+        }
       }
     } else if (use_sampling_ && static_cast<int>(frontiers_.size()) > sampling_threshold) {
       sampled_frontiers_ = FrontierHelper::sampleRandomFrontiers(frontiers_, sampling_threshold);
@@ -653,6 +682,8 @@ private:
     } else {
       goal_frontier = bestScoringFrontier(frontiers_);
     }
+
+    last_robot_position_ = robot_position_;
 
     return goal_frontier;
   }

@@ -14,6 +14,19 @@
 class FrontierHelper
 {
 public:
+  /// @brief A way to manage all objects associated with the clusters
+  struct ClusterObj
+  {
+    /// @brief A map of all of the cluster ID's and associated points.
+    std::map<int, std::vector<std::pair<int, int>>> clusters;
+
+    /// @brief A vector of pairs containing centroids in world coordinates.
+    std::vector<std::pair<float, float>> world_centroids;
+
+    /// @brief A vector of pairs containing centroids in cell coordinates.
+    std::vector<std::pair<int, int>> cell_centroids;
+  };
+
   /// @brief Checks if a given position is outside the bounds of the map.
   /// @param map The occupancy grid map.
   /// @param robot_x The x-coordinate of the robot in world coordinates.
@@ -106,6 +119,13 @@ public:
   /// @return An integer representing the largest cluster.
   static int findLargestCluster(
     const std::map<int, std::vector<std::pair<int, int>>> & clusters);
+
+  /// @brief Finds the index of the second largest cluster.
+  /// @param clusters A map of cluster indices to their associated points.
+  /// @return The index of the second largest cluster, or -1 if there are fewer than 2 clusters.
+  static int findSecondLargestCluster(
+    const std::map<int, std::vector<std::pair<int,
+    int>>> & clusters);
 };
 
 #endif // FRONTIER_HELPER_HPP

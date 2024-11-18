@@ -279,3 +279,33 @@ int FrontierHelper::findLargestCluster(
 
   return largest_index;   // Return the index of the largest cluster
 }
+
+int FrontierHelper::findSecondLargestCluster(
+  const std::map<int, std::vector<std::pair<int, int>>> &clusters)
+{
+    int largest_index = -1;       // To store the index of the largest cluster
+    int second_largest_index = -1; // To store the index of the second largest cluster
+    size_t max_size = 0;           // Size of the largest cluster
+    size_t second_max_size = 0;    // Size of the second largest cluster
+
+    for (const auto & cluster : clusters) {
+        size_t cluster_size = cluster.second.size();
+        
+        if (cluster_size > max_size) {
+            // Update second largest to current largest
+            second_max_size = max_size;
+            second_largest_index = largest_index;
+
+            // Update largest
+            max_size = cluster_size;
+            largest_index = cluster.first;
+        } else if (cluster_size > second_max_size) {
+            // Update second largest
+            second_max_size = cluster_size;
+            second_largest_index = cluster.first;
+        }
+    }
+
+    return second_largest_index; // Return the index of the second largest cluster
+}
+
