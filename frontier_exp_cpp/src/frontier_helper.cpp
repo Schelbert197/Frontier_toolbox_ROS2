@@ -2,6 +2,7 @@
 #include <random> // Required for random number generation in implementation
 #include <algorithm> // Required for std::shuffle in implementation
 #include <numeric> // Required for std::iota in implementation
+#include <set>
 
 bool FrontierHelper::isPositionOutsideMap(
   const nav_msgs::msg::OccupancyGrid & map,
@@ -192,6 +193,76 @@ std::vector<int> FrontierHelper::performDBSCAN(
   return labels;
 }
 
+std::map<int, std::vector<std::pair<int, int>>> FrontierHelper::mergeAdjacentClusters(
+  const std::map<int, std::vector<std::pair<int, int>>> & clusters)
+{
+  using Cell = std::pair<int, int>;
+
+  // Step 1: Create a map of cluster IDs to sets of cell coordinates
+  std::map<int, std::set<Cell>> cluster_cells;
+  for (const auto &[cluster_id, cells] : clusters) {
+    cluster_cells[cluster_id] = std::set<Cell>(cells.begin(), cells.end());
+  }
+
+  // Step 2: Track cluster merging using a union-find structure
+  std::map<int, int> parent;   // Maps each cluster ID to its representative (parent)
+  for (const auto &[cluster_id, _] : clusters) {
+    parent[cluster_id] = cluster_id;     // Initially, each cluster is its own parent
+  }
+
+  // Helper to find the root of a cluster
+  auto find = [&](int x) {
+      while (x != parent[x]) {
+        parent[x] = parent[parent[x]];     // Path compression
+        x = parent[x];
+      }
+      return x;
+    };
+
+  // Helper to union two clusters
+  auto unite = [&](int x, int y) {
+      int root_x = find(x);
+      int root_y = find(y);
+      if (root_x != root_y) {
+        parent[root_y] = root_x;     // Merge y into x
+      }
+    };
+
+  // Step 3: Check adjacency and merge clusters
+  std::vector<Cell> offsets = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+  for (const auto &[id1, cells1] : cluster_cells) {
+    for (const auto &[id2, cells2] : cluster_cells) {
+      if (id1 >= id2) {continue;      // Avoid duplicate checks
+      }
+      for (const auto & cell : cells1) {
+        for (const auto & offset : offsets) {
+          Cell neighbor = {cell.first + offset.first, cell.second + offset.second};
+          if (cells2.find(neighbor) != cells2.end()) {
+            unite(id1, id2);
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // Step 4: Collect merged clusters
+  std::map<int, std::vector<Cell>> merged_clusters;
+  for (const auto &[cluster_id, cells] : clusters) {
+    int root = find(cluster_id);
+    merged_clusters[root].insert(merged_clusters[root].end(), cells.begin(), cells.end());
+  }
+
+  // Step 5: Re-index clusters to ensure ordinal indices
+  std::map<int, std::vector<Cell>> reindexed_clusters;
+  int new_index = 0;
+  for (const auto &[_, cluster_cells] : merged_clusters) {
+    reindexed_clusters[new_index++] = cluster_cells;
+  }
+
+  return reindexed_clusters;
+}
+
 std::pair<int, double> FrontierHelper::bestEntropyIndexScore(const std::vector<double> & entropies)
 {
   // Select least entropy from list and find index
@@ -249,6 +320,15 @@ std::vector<std::pair<int, int>> FrontierHelper::sampleRandomFrontiers(
   return sampled_frontiers;
 }
 
+std::pair<double, double> FrontierHelper::cellToWorld(
+  const std::pair<int, int> & cell,
+  const nav_msgs::msg::OccupancyGrid & map_data)
+{
+  double world_x = map_data.info.origin.position.x + (cell.first * map_data.info.resolution);
+  double world_y = map_data.info.origin.position.y + (cell.second * map_data.info.resolution);
+  return {world_x, world_y};
+}
+
 std::vector<std::pair<int, int>> FrontierHelper::getCentroidCells(
   const nav_msgs::msg::OccupancyGrid & map,
   std::vector<std::pair<float, float>> centroids)
@@ -281,31 +361,30 @@ int FrontierHelper::findLargestCluster(
 }
 
 int FrontierHelper::findSecondLargestCluster(
-  const std::map<int, std::vector<std::pair<int, int>>> &clusters)
+  const std::map<int, std::vector<std::pair<int, int>>> & clusters)
 {
-    int largest_index = -1;       // To store the index of the largest cluster
-    int second_largest_index = -1; // To store the index of the second largest cluster
-    size_t max_size = 0;           // Size of the largest cluster
-    size_t second_max_size = 0;    // Size of the second largest cluster
+  int largest_index = -1;         // To store the index of the largest cluster
+  int second_largest_index = -1;   // To store the index of the second largest cluster
+  size_t max_size = 0;             // Size of the largest cluster
+  size_t second_max_size = 0;      // Size of the second largest cluster
 
-    for (const auto & cluster : clusters) {
-        size_t cluster_size = cluster.second.size();
-        
-        if (cluster_size > max_size) {
-            // Update second largest to current largest
-            second_max_size = max_size;
-            second_largest_index = largest_index;
+  for (const auto & cluster : clusters) {
+    size_t cluster_size = cluster.second.size();
 
-            // Update largest
-            max_size = cluster_size;
-            largest_index = cluster.first;
-        } else if (cluster_size > second_max_size) {
-            // Update second largest
-            second_max_size = cluster_size;
-            second_largest_index = cluster.first;
-        }
+    if (cluster_size > max_size) {
+      // Update second largest to current largest
+      second_max_size = max_size;
+      second_largest_index = largest_index;
+
+      // Update largest
+      max_size = cluster_size;
+      largest_index = cluster.first;
+    } else if (cluster_size > second_max_size) {
+      // Update second largest
+      second_max_size = cluster_size;
+      second_largest_index = cluster.first;
     }
+  }
 
-    return second_largest_index; // Return the index of the second largest cluster
+  return second_largest_index;   // Return the index of the second largest cluster
 }
-

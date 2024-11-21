@@ -210,7 +210,7 @@ private:
   double entropy_radius_ = 2.5;
   bool use_naive_;
   bool use_clustering_;
-  bool eval_cluster_size_ = false;
+  bool eval_cluster_size_ = true;
   bool use_sampling_;
   bool use_entropy_calc_;
   int sampling_threshold;
@@ -306,7 +306,7 @@ private:
         cleanupFrontiers();
 
         if (use_clustering_) {
-          my_clusters_.clusters = clusterFrontiers(frontiers_, 20.0, 5);
+          my_clusters_.clusters = clusterFrontiers(frontiers_, 6.0, 5);
           publishClustersAsMarkers(my_clusters_.clusters, "/map", map_data_.info.resolution, 0.06);
         }
 
@@ -386,6 +386,12 @@ private:
 
   void findFrontiers()
   {
+    // Reset all vectors
+    frontiers_.clear();
+    sampled_frontiers_.clear();
+    entropies_.clear();
+    unknowns_.clear();
+
     // Loop through the map and find frontiers
     int height = map_data_.info.height;
     int width = map_data_.info.width;
@@ -465,7 +471,7 @@ private:
       centroid.z = z_level;
 
       for (const auto & point : points) {
-        auto [world_x, world_y] = cellToWorld(point);
+        auto [world_x, world_y] = FrontierHelper::cellToWorld(point, map_data_);
         geometry_msgs::msg::Point p;
         p.x = world_x;
         p.y = world_y;
@@ -549,7 +555,6 @@ private:
     active_marker_ids_.clear();
   }
 
-  // Main clustering function
   std::map<int, std::vector<std::pair<int, int>>> clusterFrontiers(
     const std::vector<std::pair<int, int>> & frontiers, float eps,
     int min_samples)
@@ -563,7 +568,6 @@ private:
 
     // Organize clusters
     std::map<int, std::vector<std::pair<int, int>>> clusters;
-    clusters.clear();
     for (size_t i = 0; i < frontiers.size(); ++i) {
       int label = labels.at(i);
       if (label >= 0) {      // Ignore noise
@@ -573,6 +577,9 @@ private:
 
     // Filter out small clusters
     auto filtered_clusters = filterClusters(clusters, min_samples);
+
+    // Merge adjacent clusters
+    filtered_clusters = FrontierHelper::mergeAdjacentClusters(filtered_clusters);
 
     RCLCPP_INFO(get_logger(), "Number of frontiers: %ld", frontiers.size());
     // Print cluster information
@@ -645,21 +652,24 @@ private:
         my_clusters_.world_centroids);
       if (eval_cluster_size_) {
 
+        RCLCPP_INFO(
+          get_logger(),
+          "Number of clusters: %ld\nNumber of centroids: %ld", my_clusters_.clusters.size(), my_clusters_.cell_centroids.size());
+
         int largest_cluster_id = FrontierHelper::findLargestCluster(my_clusters_.clusters);
         goal_frontier = my_clusters_.cell_centroids.at(largest_cluster_id);
-        if (last_robot_position_ == robot_position_) {
+        if (std::abs(last_robot_position_.first - robot_position_.first) < EPSILON &&
+          std::abs(last_robot_position_.second - robot_position_.second) < EPSILON)
+        {
           goal_frontier =
             my_clusters_.cell_centroids.at(
             FrontierHelper::findSecondLargestCluster(
               my_clusters_.
               clusters));
+          RCLCPP_INFO(get_logger(), "Going to second largest cluster because robot hasn't moved");
         }
       } else {
         goal_frontier = bestScoringFrontier(my_clusters_.cell_centroids);
-        // if (tooClose(goal_frontier)) {
-        //   int largest_cluster_id = FrontierHelper::findLargestCluster(my_clusters_.clusters);
-        //   goal_frontier = my_clusters_.cell_centroids.at(largest_cluster_id);
-        // }
         RCLCPP_INFO(
           get_logger(),
           "last_robot_position: %f, %f \nCurrent Robot Position: %f, %f", last_robot_position_.first, last_robot_position_.second,
@@ -691,7 +701,7 @@ private:
   void publishToNav2ActionClient(const std::pair<int, int> & goal_frontier)
   {
     auto goal_pose = std::make_shared<nav_client_cpp::srv::NavToPose::Request>();
-    std::tie(goal_pose->x, goal_pose->y) = cellToWorld(goal_frontier);
+    std::tie(goal_pose->x, goal_pose->y) = FrontierHelper::cellToWorld(goal_frontier, map_data_);
     goal_pose->theta = 0.0;
     RCLCPP_INFO(
       get_logger(), "Publishing goal at %f, %f", goal_pose->x, goal_pose->y);
@@ -702,7 +712,7 @@ private:
   {
     geometry_msgs::msg::PoseStamped goal_pose;
     goal_pose.header.frame_id = "map";
-    std::tie(goal_pose.pose.position.x, goal_pose.pose.position.y) = cellToWorld(goal_frontier);
+    std::tie(goal_pose.pose.position.x, goal_pose.pose.position.y) = FrontierHelper::cellToWorld(goal_frontier, map_data_);
     goal_pose.pose.position.z = 0.0;
     goal_pose.pose.orientation.w = 1.0;
 
@@ -727,26 +737,19 @@ private:
 
   double distanceToRobot(const std::pair<int, int> & frontier)
   {
-    auto [fx, fy] = cellToWorld(frontier);
+    auto [fx, fy] = FrontierHelper::cellToWorld(frontier, map_data_);
     auto [rx, ry] = robot_position_;
     return std::hypot(fx - rx, fy - ry);
   }
 
   double distanceToRobotVP(const std::pair<int, int> & frontier)
   {
-    auto [fx, fy] = cellToWorld(frontier);
+    auto [fx, fy] = FrontierHelper::cellToWorld(frontier, map_data_);
     double rx = 0.0, ry = 0.0; // Initialize rx and ry
     if (robot_vp_position_) { // Assign values if robot_vp_position_ is set
       std::tie(rx, ry) = *robot_vp_position_;   // Dereferencing pointer :O
     }
     return std::hypot(fx - rx, fy - ry);
-  }
-
-  std::pair<double, double> cellToWorld(const std::pair<int, int> & cell)
-  {
-    double world_x = map_data_.info.origin.position.x + (cell.first * map_data_.info.resolution);
-    double world_y = map_data_.info.origin.position.y + (cell.second * map_data_.info.resolution);
-    return {world_x, world_y};
   }
 
   std::pair<int, int> bestScoringFrontier(const std::vector<std::pair<int, int>> & frontiers)
@@ -756,11 +759,6 @@ private:
     if (use_entropy_calc_) {
       total_entropy = FrontierHelper::calculateMapEntropy(map_data_.data);
       RCLCPP_INFO(get_logger(), "Total Map Entropy %f", total_entropy);
-      // Reset list of entropies
-      entropies_.clear();
-    } else {
-      // reset unknowns list
-      unknowns_.clear();
     }
 
     // Loop through all frontiers and get score

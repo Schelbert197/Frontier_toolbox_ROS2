@@ -83,6 +83,12 @@ public:
     float eps,
     int min_samples);
 
+  /// @brief Merges adjacent clusters in a map of clusters.
+  /// @param clusters A map of cluster IDs to vectors of (x, y) cell coordinates.
+  /// @return A new map with adjacent clusters merged.
+  static std::map<int, std::vector<std::pair<int, int>>> mergeAdjacentClusters(
+    const std::map<int, std::vector<std::pair<int, int>>> & clusters);
+
   /// @brief Selects the least entropy from a list and returns its index and value.
   /// @param entropies A vector containing entropy values.
   /// @return A pair containing the index of the best frontier and the corresponding entropy value.
@@ -105,6 +111,14 @@ public:
   static std::vector<std::pair<int, int>> sampleRandomFrontiers(
     const std::vector<std::pair<int, int>> & frontiers,
     size_t sample_size);
+
+  /// @brief Returns a grid cell in world coordinates.
+  /// @param cell The grid cell to be converted.
+  /// @param map_data The occupancy grid map data.
+  /// @return The x,y position of the cell in meter from the map origin.
+  static std::pair<double, double> cellToWorld(
+    const std::pair<int, int> & cell,
+    const nav_msgs::msg::OccupancyGrid & map_data);
 
   /// @brief Translates the centroid coordinates from the world meters to map cells.
   /// @param map The occupancy grid map.
