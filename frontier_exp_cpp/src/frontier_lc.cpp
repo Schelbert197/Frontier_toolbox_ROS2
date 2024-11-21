@@ -193,10 +193,13 @@ private:
   rclcpp::Client<nav_client_cpp::srv::NavToPose>::SharedPtr nav_to_pose_client_;
   rclcpp::Client<std_srvs::srv::Empty>::SharedPtr cancel_nav_client_;
 
+  // For simplification
+  using Cell = FrontierHelper::Cell;
+
   // Data objects
   nav_msgs::msg::OccupancyGrid map_data_;
-  std::vector<std::pair<int, int>> frontiers_;
-  std::vector<std::pair<int, int>> sampled_frontiers_;
+  std::vector<Cell> frontiers_;
+  std::vector<Cell> sampled_frontiers_;
   std::vector<double> entropies_;
   std::vector<int> unknowns_;
   std::pair<double, double> robot_position_;
@@ -252,7 +255,7 @@ private:
     }
   }
 
-  void selectNextBest(std::vector<std::pair<int, int>> & frontiers)
+  void selectNextBest(std::vector<Cell> & frontiers)
   {
     if (use_clustering_) {
       int s_largest_cluster_id = FrontierHelper::findSecondLargestCluster(my_clusters_.clusters);
@@ -417,7 +420,7 @@ private:
 
   void cleanupFrontiers()
   {
-    std::vector<std::pair<int, int>> valid_frontiers;
+    std::vector<Cell> valid_frontiers;
     const auto & data = map_data_.data;
 
     for (const auto & frontier : frontiers_) {
@@ -434,7 +437,7 @@ private:
   }
 
   void publishClustersAsMarkers(
-    const std::map<int, std::vector<std::pair<int, int>>> & clusters,
+    const std::map<int, std::vector<Cell>> & clusters,
     const std::string & frame_id,
     float resolution,
     float z_level = 0.0)
@@ -555,8 +558,8 @@ private:
     active_marker_ids_.clear();
   }
 
-  std::map<int, std::vector<std::pair<int, int>>> clusterFrontiers(
-    const std::vector<std::pair<int, int>> & frontiers, float eps,
+  std::map<int, std::vector<Cell>> clusterFrontiers(
+    const std::vector<Cell> & frontiers, float eps,
     int min_samples)
   {
     cv::Mat points;
@@ -567,7 +570,7 @@ private:
     auto labels = FrontierHelper::performDBSCAN(points, eps, min_samples);
 
     // Organize clusters
-    std::map<int, std::vector<std::pair<int, int>>> clusters;
+    std::map<int, std::vector<Cell>> clusters;
     for (size_t i = 0; i < frontiers.size(); ++i) {
       int label = labels.at(i);
       if (label >= 0) {      // Ignore noise
@@ -592,11 +595,11 @@ private:
   }
 
   // Filter out clusters smaller than min_samples
-  std::map<int, std::vector<std::pair<int, int>>> filterClusters(
-    const std::map<int, std::vector<std::pair<int, int>>> & clusters,
+  std::map<int, std::vector<Cell>> filterClusters(
+    const std::map<int, std::vector<Cell>> & clusters,
     int min_samples)
   {
-    std::map<int, std::vector<std::pair<int, int>>> filtered_clusters;
+    std::map<int, std::vector<Cell>> filtered_clusters;
     for (const auto & [id, cluster] : clusters) {
       if (static_cast<int>(cluster.size()) >= min_samples) {
         filtered_clusters[id] = cluster;
@@ -605,7 +608,7 @@ private:
     return filtered_clusters;
   }
 
-  bool tooClose(const std::pair<int, int> & frontier)
+  bool tooClose(const Cell & frontier)
   {
     return distanceToRobot(frontier) <= robot_radius_;
   }
@@ -624,9 +627,9 @@ private:
     }
   }
 
-  std::pair<int, int> selectGoal()
+  Cell selectGoal()
   {
-    std::pair<int, int> goal_frontier;
+    Cell goal_frontier;
     if (use_naive_ == true) {
       // Using naive algorithm
       if (use_sampling_ && static_cast<int>(frontiers_.size()) > sampling_threshold) {
@@ -654,7 +657,8 @@ private:
 
         RCLCPP_INFO(
           get_logger(),
-          "Number of clusters: %ld\nNumber of centroids: %ld", my_clusters_.clusters.size(), my_clusters_.cell_centroids.size());
+          "Number of clusters: %ld\nNumber of centroids: %ld",
+          my_clusters_.clusters.size(), my_clusters_.cell_centroids.size());
 
         int largest_cluster_id = FrontierHelper::findLargestCluster(my_clusters_.clusters);
         goal_frontier = my_clusters_.cell_centroids.at(largest_cluster_id);
@@ -698,7 +702,7 @@ private:
     return goal_frontier;
   }
 
-  void publishToNav2ActionClient(const std::pair<int, int> & goal_frontier)
+  void publishToNav2ActionClient(const Cell & goal_frontier)
   {
     auto goal_pose = std::make_shared<nav_client_cpp::srv::NavToPose::Request>();
     std::tie(goal_pose->x, goal_pose->y) = FrontierHelper::cellToWorld(goal_frontier, map_data_);
@@ -708,11 +712,12 @@ private:
     auto future_result = nav_to_pose_client_->async_send_request(goal_pose);
   }
 
-  void publishToNav2PlannerServer(const std::pair<int, int> & goal_frontier)
+  void publishToNav2PlannerServer(const Cell & goal_frontier)
   {
     geometry_msgs::msg::PoseStamped goal_pose;
     goal_pose.header.frame_id = "map";
-    std::tie(goal_pose.pose.position.x, goal_pose.pose.position.y) = FrontierHelper::cellToWorld(goal_frontier, map_data_);
+    std::tie(goal_pose.pose.position.x, goal_pose.pose.position.y) = FrontierHelper::cellToWorld(
+      goal_frontier, map_data_);
     goal_pose.pose.position.z = 0.0;
     goal_pose.pose.orientation.w = 1.0;
 
@@ -735,14 +740,14 @@ private:
     RCLCPP_DEBUG(get_logger(), "Published map with highlighted frontiers.");
   }
 
-  double distanceToRobot(const std::pair<int, int> & frontier)
+  double distanceToRobot(const Cell & frontier)
   {
     auto [fx, fy] = FrontierHelper::cellToWorld(frontier, map_data_);
     auto [rx, ry] = robot_position_;
     return std::hypot(fx - rx, fy - ry);
   }
 
-  double distanceToRobotVP(const std::pair<int, int> & frontier)
+  double distanceToRobotVP(const Cell & frontier)
   {
     auto [fx, fy] = FrontierHelper::cellToWorld(frontier, map_data_);
     double rx = 0.0, ry = 0.0; // Initialize rx and ry
@@ -752,7 +757,7 @@ private:
     return std::hypot(fx - rx, fy - ry);
   }
 
-  std::pair<int, int> bestScoringFrontier(const std::vector<std::pair<int, int>> & frontiers)
+  Cell bestScoringFrontier(const std::vector<Cell> & frontiers)
   {
     double total_entropy;
     // Establish baseline and reset for preferred scoring approach

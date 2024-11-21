@@ -28,7 +28,7 @@ bool FrontierHelper::hasFreeNeighbor(
   int width = map_data.info.width;
   const auto & data = map_data.data;
 
-  std::vector<std::pair<int, int>> neighbors = {{x - 1, y}, {x + 1, y}, {x, y - 1}, {x, y + 1}};
+  std::vector<Cell> neighbors = {{x - 1, y}, {x + 1, y}, {x, y - 1}, {x, y + 1}};
   for (const auto & [nx, ny] : neighbors) {
     if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
       int idx = ny * width + nx;
@@ -193,11 +193,9 @@ std::vector<int> FrontierHelper::performDBSCAN(
   return labels;
 }
 
-std::map<int, std::vector<std::pair<int, int>>> FrontierHelper::mergeAdjacentClusters(
-  const std::map<int, std::vector<std::pair<int, int>>> & clusters)
+std::map<int, std::vector<FrontierHelper::Cell>> FrontierHelper::mergeAdjacentClusters(
+  const std::map<int, std::vector<FrontierHelper::Cell>> & clusters)
 {
-  using Cell = std::pair<int, int>;
-
   // Step 1: Create a map of cluster IDs to sets of cell coordinates
   std::map<int, std::set<Cell>> cluster_cells;
   for (const auto &[cluster_id, cells] : clusters) {
@@ -273,7 +271,7 @@ std::pair<int, double> FrontierHelper::bestEntropyIndexScore(const std::vector<d
   return std::make_pair(best_frontier_idx_, best_possible_entropy);
 }
 
-std::pair<int, int> FrontierHelper::bestUnknownsIndexScore(const std::vector<int> & unknowns)
+FrontierHelper::Cell FrontierHelper::bestUnknownsIndexScore(const std::vector<int> & unknowns)
 {
   // Select most converted unknowns from list and find index
   auto max_iterator = std::max_element(unknowns.begin(), unknowns.end());
@@ -292,11 +290,11 @@ double FrontierHelper::calculateMapEntropy(const std::vector<int8_t> & map_data)
   return entropy;
 }
 
-std::vector<std::pair<int, int>> FrontierHelper::sampleRandomFrontiers(
-  const std::vector<std::pair<int, int>> & frontiers,
+std::vector<FrontierHelper::Cell> FrontierHelper::sampleRandomFrontiers(
+  const std::vector<FrontierHelper::Cell> & frontiers,
   size_t sample_size)
 {
-  std::vector<std::pair<int, int>> sampled_frontiers;
+  std::vector<Cell> sampled_frontiers;
 
   // If the size of frontiers is less than or equal to the sample size, return the original frontiers
   if (frontiers.size() <= sample_size) {
@@ -321,7 +319,7 @@ std::vector<std::pair<int, int>> FrontierHelper::sampleRandomFrontiers(
 }
 
 std::pair<double, double> FrontierHelper::cellToWorld(
-  const std::pair<int, int> & cell,
+  const FrontierHelper::Cell & cell,
   const nav_msgs::msg::OccupancyGrid & map_data)
 {
   double world_x = map_data.info.origin.position.x + (cell.first * map_data.info.resolution);
@@ -329,11 +327,11 @@ std::pair<double, double> FrontierHelper::cellToWorld(
   return {world_x, world_y};
 }
 
-std::vector<std::pair<int, int>> FrontierHelper::getCentroidCells(
+std::vector<FrontierHelper::Cell> FrontierHelper::getCentroidCells(
   const nav_msgs::msg::OccupancyGrid & map,
   std::vector<std::pair<float, float>> centroids)
 {
-  std::vector<std::pair<int, int>> cell_clusters;
+  std::vector<Cell> cell_clusters;
 
   for (const auto & centroid : centroids) {
     int cell_x = (centroid.first - map.info.origin.position.x) / map.info.resolution;
@@ -361,7 +359,7 @@ int FrontierHelper::findLargestCluster(
 }
 
 int FrontierHelper::findSecondLargestCluster(
-  const std::map<int, std::vector<std::pair<int, int>>> & clusters)
+  const std::map<int, std::vector<FrontierHelper::Cell>> & clusters)
 {
   int largest_index = -1;         // To store the index of the largest cluster
   int second_largest_index = -1;   // To store the index of the second largest cluster

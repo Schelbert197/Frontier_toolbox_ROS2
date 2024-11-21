@@ -14,17 +14,28 @@
 class FrontierHelper
 {
 public:
+  using Cell = std::pair<int, int>;
+
   /// @brief A way to manage all objects associated with the clusters
   struct ClusterObj
   {
     /// @brief A map of all of the cluster ID's and associated points.
-    std::map<int, std::vector<std::pair<int, int>>> clusters;
+    std::map<int, std::vector<Cell>> clusters;
 
     /// @brief A vector of pairs containing centroids in world coordinates.
     std::vector<std::pair<float, float>> world_centroids;
 
     /// @brief A vector of pairs containing centroids in cell coordinates.
-    std::vector<std::pair<int, int>> cell_centroids;
+    std::vector<Cell> cell_centroids;
+  };
+
+  struct BannedAreas
+  {
+    /// @brief A radius [m] around a cell to consider "banned".
+    float radius;
+
+    /// @brief The list of cells that are to be avoided.
+    std::vector<Cell> cells;
   };
 
   /// @brief Checks if a given position is outside the bounds of the map.
@@ -86,8 +97,8 @@ public:
   /// @brief Merges adjacent clusters in a map of clusters.
   /// @param clusters A map of cluster IDs to vectors of (x, y) cell coordinates.
   /// @return A new map with adjacent clusters merged.
-  static std::map<int, std::vector<std::pair<int, int>>> mergeAdjacentClusters(
-    const std::map<int, std::vector<std::pair<int, int>>> & clusters);
+  static std::map<int, std::vector<Cell>> mergeAdjacentClusters(
+    const std::map<int, std::vector<Cell>> & clusters);
 
   /// @brief Selects the least entropy from a list and returns its index and value.
   /// @param entropies A vector containing entropy values.
@@ -97,7 +108,7 @@ public:
   /// @brief Selects the most converted unknowns from a list and returns its index and value.
   /// @param unknowns A vector containing the number of unknown cells.
   /// @return A pair containing the index of the best frontier and the corresponding number of unknowns.
-  static std::pair<int, int> bestUnknownsIndexScore(const std::vector<int> & unknowns);
+  static Cell bestUnknownsIndexScore(const std::vector<int> & unknowns);
 
   /// @brief Calculates the entropy of a map based on its data.
   /// @param map_data A vector containing the occupancy grid data.
@@ -108,8 +119,8 @@ public:
   /// @param frontiers The list of frontier coordinates (x, y).
   /// @param sample_size The number of frontiers to sample.
   /// @return A vector of sampled frontiers, up to the specified sample size.
-  static std::vector<std::pair<int, int>> sampleRandomFrontiers(
-    const std::vector<std::pair<int, int>> & frontiers,
+  static std::vector<Cell> sampleRandomFrontiers(
+    const std::vector<Cell> & frontiers,
     size_t sample_size);
 
   /// @brief Returns a grid cell in world coordinates.
@@ -117,14 +128,14 @@ public:
   /// @param map_data The occupancy grid map data.
   /// @return The x,y position of the cell in meter from the map origin.
   static std::pair<double, double> cellToWorld(
-    const std::pair<int, int> & cell,
+    const Cell & cell,
     const nav_msgs::msg::OccupancyGrid & map_data);
 
   /// @brief Translates the centroid coordinates from the world meters to map cells.
   /// @param map The occupancy grid map.
   /// @param centroids The list of centroids to convert.
   /// @return A vector of centroids as cells in the map.
-  static std::vector<std::pair<int, int>> getCentroidCells(
+  static std::vector<Cell> getCentroidCells(
     const nav_msgs::msg::OccupancyGrid & map,
     std::vector<std::pair<float, float>> centroids);
 
@@ -132,7 +143,7 @@ public:
   /// @param clusters The hashmap of id's and their associated clustered points.
   /// @return An integer representing the largest cluster.
   static int findLargestCluster(
-    const std::map<int, std::vector<std::pair<int, int>>> & clusters);
+    const std::map<int, std::vector<Cell>> & clusters);
 
   /// @brief Finds the index of the second largest cluster.
   /// @param clusters A map of cluster indices to their associated points.
