@@ -82,7 +82,7 @@ public:
     use_entropy_calc_ = get_parameter("use_entropy_calc").as_bool();
     use_sampling_ = get_parameter("use_sampling").as_bool();
     sampling_threshold = get_parameter("sampling_threshold").as_int();
-    banned.radius = get_parameter("banning_radius").as_double();
+    banned_.radius = get_parameter("banning_radius").as_double();
 
     // Create separate callback groups for each service client
     nav_to_pose_callback_group_ = this->create_callback_group(
@@ -211,7 +211,7 @@ private:
   std::optional<Coord> robot_vp_position_;
   std::set<int> active_marker_ids_;
   FrontierHelper::ClusterObj my_clusters_;
-  FrontierHelper::BannedAreas banned;
+  FrontierHelper::BannedAreas banned_;
 
   double viewpoint_depth_;
   bool is_sim_;
@@ -774,8 +774,9 @@ private:
       const auto & frontier = frontiers.at(i);
       int idx = frontier.second * map_data_.info.width + frontier.first;
       int unknowns = FrontierHelper::countUnknownCellsWithinRadius(map_data_, idx, entropy_radius_);
-      // if ()
-      // IDENTIFY IF SOMETHING HAS BEEN BANNED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      if (FrontierHelper::identifyBanned(frontiers.at(i), banned_, map_data_)) {
+        unknowns = 0;
+      }
 
       if (use_entropy_calc_) {
         // calculate current reduced entropy and place in list
