@@ -774,6 +774,8 @@ private:
       const auto & frontier = frontiers.at(i);
       int idx = frontier.second * map_data_.info.width + frontier.first;
       int unknowns = FrontierHelper::countUnknownCellsWithinRadius(map_data_, idx, entropy_radius_);
+      // if ()
+      // IDENTIFY IF SOMETHING HAS BEEN BANNED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
       if (use_entropy_calc_) {
         // calculate current reduced entropy and place in list

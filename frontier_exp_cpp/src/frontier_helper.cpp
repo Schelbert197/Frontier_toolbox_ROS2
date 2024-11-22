@@ -44,6 +44,24 @@ FrontierHelper::BannedAreas FrontierHelper::addBanned(
   return banned;
 }
 
+bool FrontierHelper::identifyBanned(
+  const Cell & cell, const BannedAreas & banned,
+  const nav_msgs::msg::OccupancyGrid & map_data)
+{
+  // Convert to world coords, add if within radius, or add if not in list
+  auto cell_world = cellToWorld(cell, map_data);
+
+  for (const auto & loc : banned.coords) {
+    double distance = std::hypot(
+      cell_world.first - loc.first,
+      cell_world.second - loc.second);
+    if (distance < banned.radius) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool FrontierHelper::isPositionOutsideMap(
   const nav_msgs::msg::OccupancyGrid & map,
   const double & robot_x, const double & robot_y)

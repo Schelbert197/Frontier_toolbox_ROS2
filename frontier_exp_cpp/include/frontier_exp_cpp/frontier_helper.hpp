@@ -50,10 +50,18 @@ public:
     const nav_msgs::msg::OccupancyGrid & map_data);
 
   /// @brief Takes items from staged for banishment and officially banishes them.
-  /// @param staged
-  /// @param banned
-  /// @return The new banned
+  /// @param staged The map of staged locations to be banned.
+  /// @param banned The struct of banned goal locations.
+  /// @return The new banned locations struct.
   static BannedAreas addBanned(std::map<Coord, int> & staged, BannedAreas & banned);
+
+  /// @brief Checks if a location if a goal location is considered in a banned area
+  /// @param cell The cell to be evaluated.
+  /// @param banned The struct with the list of banned locations.
+  /// @return A true or false whether the location is near a banned location.
+  static bool identifyBanned(
+    const Cell & cell, const BannedAreas & banned,
+    const nav_msgs::msg::OccupancyGrid & map_data);
 
   /// @brief Checks if a given position is outside the bounds of the map.
   /// @param map The occupancy grid map.
