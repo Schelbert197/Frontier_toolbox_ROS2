@@ -401,16 +401,23 @@ std::vector<FrontierHelper::Cell> FrontierHelper::getCentroidCells(
 }
 
 int FrontierHelper::findLargestCluster(
-  const std::map<int, std::vector<std::pair<int,
-  int>>> & clusters)
+  const ClusterObj & cluster_obj, const BannedAreas & banned,
+  const nav_msgs::msg::OccupancyGrid & map_data)
 {
   int largest_index = -1;   // Initialize to an invalid index
   size_t max_size = 0;      // To store the largest size
 
-  for (const auto & cluster : clusters) {
-    if (cluster.second.size() > max_size) {
-      max_size = cluster.second.size();
-      largest_index = cluster.first;       // Update to the current cluster's index
+  // Iterate through all clusters
+  for (const auto & [cluster_id, cluster_cells] : cluster_obj.clusters) {
+    // Use cell centroids instead of the cluster directly
+    if (FrontierHelper::identifyBanned(cluster_obj.cell_centroids.at(cluster_id), banned, map_data)) {
+      continue;
+    }
+
+    // Check if the current cluster is larger than the max found so far
+    if (cluster_cells.size() > max_size) {
+      max_size = cluster_cells.size();
+      largest_index = cluster_id;  // Update to the current cluster's ID
     }
   }
 

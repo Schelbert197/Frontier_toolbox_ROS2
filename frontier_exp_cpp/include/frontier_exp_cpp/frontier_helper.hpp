@@ -168,7 +168,8 @@ public:
   /// @param clusters The hashmap of id's and their associated clustered points.
   /// @return An integer representing the largest cluster.
   static int findLargestCluster(
-    const std::map<int, std::vector<Cell>> & clusters);
+    const FrontierHelper::ClusterObj & cluster_obj, const BannedAreas & banned,
+    const nav_msgs::msg::OccupancyGrid & map_data);
 
   /// @brief Finds the index of the second largest cluster.
   /// @param clusters A map of cluster indices to their associated points.

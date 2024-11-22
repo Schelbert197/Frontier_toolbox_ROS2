@@ -667,7 +667,7 @@ private:
           "Number of clusters: %ld\nNumber of centroids: %ld",
           my_clusters_.clusters.size(), my_clusters_.cell_centroids.size());
 
-        int largest_cluster_id = FrontierHelper::findLargestCluster(my_clusters_.clusters);
+        int largest_cluster_id = FrontierHelper::findLargestCluster(my_clusters_, banned_, map_data_);
         goal_frontier = my_clusters_.cell_centroids.at(largest_cluster_id);
         if (stuck()) {
           goal_frontier =
