@@ -4,17 +4,44 @@
 #include <numeric> // Required for std::iota in implementation
 #include <set>
 
-std::map<FrontierHelper::Cell, int> FrontierHelper::stageBanned(
-    const Cell & cell, std::map<Cell, int> & staged,
-    double rad)
+std::map<FrontierHelper::Coord, int> FrontierHelper::stageBanned(
+  const Cell & cell, std::map<Coord, int> & staged,
+  double rad,
+  const nav_msgs::msg::OccupancyGrid & map_data)
 {
-  if (staged.count(cell) > 0) {
-    staged[cell]++;
-  } else {
-    staged[cell] = 1;
+  // Convert to world coords, add if within radius, or add if not in list
+  auto cell_world = cellToWorld(cell, map_data);
+
+  // Check if the location is within the radius of any staged location
+  for (const auto &[staged_loc, count] : staged) {
+    double distance = std::hypot(
+      cell_world.first - staged_loc.first,
+      cell_world.second - staged_loc.second);
+    if (distance < rad) {
+      staged[staged_loc]++;
+      return staged; // Exit early and don't add a new key
+    }
   }
-  // Check whether or not I should implement radius?
+
+  // No close location was found, add a new entry
+  staged[cell_world] = 1;
   return staged;
+}
+
+FrontierHelper::BannedAreas FrontierHelper::addBanned(
+  std::map<Coord, int> & staged,
+  FrontierHelper::BannedAreas & banned)
+{
+  // Check if any locations meet the threshold to be banned
+  for (const auto &[staged_loc, count] : staged) {
+    if (count == 3) {
+      banned.coords.emplace_back(staged_loc); // Banish location
+      staged[staged_loc]++; // Increment count again so we don't add loc to banned twice
+      std::cout << "Location:" << staged_loc.first << ", " << staged_loc.second
+                << " is now banished!" << std::endl; // Print newly banished location
+    }
+  }
+  return banned;
 }
 
 bool FrontierHelper::isPositionOutsideMap(
@@ -146,7 +173,7 @@ int FrontierHelper::countUnknownCellsWithinRadius(
 
 std::vector<int> FrontierHelper::performDBSCAN(
   const cv::Mat & points,
-  float eps,
+  double eps,
   int min_samples)
 {
   std::vector<int> labels(points.rows, -1);    // Initialize labels to -1 (noise)
@@ -243,7 +270,8 @@ std::map<int, std::vector<FrontierHelper::Cell>> FrontierHelper::mergeAdjacentCl
   std::vector<Cell> offsets = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
   for (const auto &[id1, cells1] : cluster_cells) {
     for (const auto &[id2, cells2] : cluster_cells) {
-      if (id1 >= id2) {continue;      // Avoid duplicate checks
+      if (id1 >= id2) {
+        continue;                     // Avoid duplicate checks
       }
       for (const auto & cell : cells1) {
         for (const auto & offset : offsets) {
@@ -342,7 +370,7 @@ std::pair<double, double> FrontierHelper::cellToWorld(
 
 std::vector<FrontierHelper::Cell> FrontierHelper::getCentroidCells(
   const nav_msgs::msg::OccupancyGrid & map,
-  std::vector<std::pair<float, float>> centroids)
+  std::vector<FrontierHelper::Coord> centroids)
 {
   std::vector<Cell> cell_clusters;
 

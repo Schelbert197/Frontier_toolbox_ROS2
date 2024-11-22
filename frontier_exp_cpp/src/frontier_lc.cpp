@@ -38,6 +38,7 @@ public:
     auto entropy_calc_des = rcl_interfaces::msg::ParameterDescriptor{};
     auto use_sampling_des = rcl_interfaces::msg::ParameterDescriptor{};
     auto sampling_threshold_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto banning_radius_des = rcl_interfaces::msg::ParameterDescriptor{};
 
     // Parameter Descriptions and Declarations
     use_naive_des.description = "Choose to use naive frontier selection or mutual information";
@@ -66,6 +67,9 @@ public:
     sampling_threshold_des.description =
       "The threshold at which after this many frontiers, the calculation will be sampled";
     declare_parameter("sampling_threshold", 500, sampling_threshold_des);
+    banning_radius_des.description =
+      "The radius around which to consider a goal position banished from being a goal.";
+    declare_parameter("banning_radius", 1.0, banning_radius_des);
 
     // Get Parameters
     is_sim_ = get_parameter("use_sim_time").as_bool();
@@ -78,6 +82,7 @@ public:
     use_entropy_calc_ = get_parameter("use_entropy_calc").as_bool();
     use_sampling_ = get_parameter("use_sampling").as_bool();
     sampling_threshold = get_parameter("sampling_threshold").as_int();
+    banned.radius = get_parameter("banning_radius").as_double();
 
     // Create separate callback groups for each service client
     nav_to_pose_callback_group_ = this->create_callback_group(
@@ -193,6 +198,7 @@ private:
 
   // For simplification
   using Cell = FrontierHelper::Cell;
+  using Coord = FrontierHelper::Coord;
 
   // Data objects
   nav_msgs::msg::OccupancyGrid map_data_;
@@ -200,12 +206,12 @@ private:
   std::vector<Cell> sampled_frontiers_;
   std::vector<double> entropies_;
   std::vector<int> unknowns_;
-  std::pair<double, double> robot_position_;
-  std::pair<double, double> last_robot_position_;
-  std::optional<std::pair<double, double>> robot_vp_position_;
+  Coord robot_position_;
+  Coord last_robot_position_;
+  std::optional<Coord> robot_vp_position_;
   std::set<int> active_marker_ids_;
   FrontierHelper::ClusterObj my_clusters_;
-  FrontierHelper::BannedAreas banned(1.0f);
+  FrontierHelper::BannedAreas banned;
 
   double viewpoint_depth_;
   bool is_sim_;
@@ -321,7 +327,7 @@ private:
     }
   }
 
-  std::optional<std::pair<double, double>> getRobotViewpoint()
+  std::optional<Coord> getRobotViewpoint()
   {
     std::string base_frame = is_sim_ ? "base_footprint" : "base_link";
     try {

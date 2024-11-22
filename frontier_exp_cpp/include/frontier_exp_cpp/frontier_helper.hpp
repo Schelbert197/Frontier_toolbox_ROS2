@@ -7,6 +7,7 @@
 #include <cmath>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <opencv2/core.hpp>
+#include <iostream>
 
 
 /// @class FrontierHelper
@@ -15,6 +16,7 @@ class FrontierHelper
 {
 public:
   using Cell = std::pair<int, int>;
+  using Coord = std::pair<double, double>;
 
   /// @brief A way to manage all objects associated with the clusters
   struct ClusterObj
@@ -23,7 +25,7 @@ public:
     std::map<int, std::vector<Cell>> clusters;
 
     /// @brief A vector of pairs containing centroids in world coordinates.
-    std::vector<std::pair<float, float>> world_centroids;
+    std::vector<Coord> world_centroids;
 
     /// @brief A vector of pairs containing centroids in cell coordinates.
     std::vector<Cell> cell_centroids;
@@ -32,23 +34,26 @@ public:
   struct BannedAreas
   {
     /// @brief A radius [m] around a cell to consider "banned".
-    float radius;
+    double radius;
 
-    /// @brief The list of cells that are to be avoided.
-    std::vector<Cell> cells;
-
-    /// @brief Constructor to enforce radius initialization
-    explicit BannedAreas(float r)
-    : radius(r), cells() {}
+    /// @brief The list of coords that are to be avoided.
+    std::vector<Coord> coords;
   };
 
   /// @brief Stage a new area to be banned, or add to an existing area within radius
   /// @param cell Location to be evaluated for banishment staging.
   /// @param staged Hashmap of the existing places staged for banishment.
   /// @param rad The radius in which to asses whether a location is near an existing cell.
-  static std::map<Cell, int> stageBanned(
-    const Cell & cell, std::map<Cell, int> & staged,
-    double rad);
+  static std::map<Coord, int> stageBanned(
+    const Cell & cell, std::map<Coord, int> & staged,
+    double rad,
+    const nav_msgs::msg::OccupancyGrid & map_data);
+
+  /// @brief Takes items from staged for banishment and officially banishes them.
+  /// @param staged
+  /// @param banned
+  /// @return The new banned
+  static BannedAreas addBanned(std::map<Coord, int> & staged, BannedAreas & banned);
 
   /// @brief Checks if a given position is outside the bounds of the map.
   /// @param map The occupancy grid map.
@@ -103,7 +108,7 @@ public:
   ///         Points labeled as -1 are considered noise.
   static std::vector<int> performDBSCAN(
     const cv::Mat & points,
-    float eps,
+    double eps,
     int min_samples);
 
   /// @brief Merges adjacent clusters in a map of clusters.
@@ -149,7 +154,7 @@ public:
   /// @return A vector of centroids as cells in the map.
   static std::vector<Cell> getCentroidCells(
     const nav_msgs::msg::OccupancyGrid & map,
-    std::vector<std::pair<float, float>> centroids);
+    std::vector<Coord> centroids);
 
   /// @brief Finds the cluster with the largest number of associated points.
   /// @param clusters The hashmap of id's and their associated clustered points.
@@ -161,8 +166,7 @@ public:
   /// @param clusters A map of cluster indices to their associated points.
   /// @return The index of the second largest cluster, or -1 if there are fewer than 2 clusters.
   static int findSecondLargestCluster(
-    const std::map<int, std::vector<std::pair<int,
-    int>>> & clusters);
+    const std::map<int, std::vector<Cell>> & clusters);
 };
 
 #endif // FRONTIER_HELPER_HPP

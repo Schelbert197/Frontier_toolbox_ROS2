@@ -9,6 +9,7 @@ frontier_explorer:
     use_sampling: true
     use_entropy_calc: true
     sampling_threshold: 250
+    banning_radius: 1.0
 
 nav_to_pose:
   ros__parameters:
