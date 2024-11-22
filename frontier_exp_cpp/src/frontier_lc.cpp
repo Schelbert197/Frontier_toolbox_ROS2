@@ -15,8 +15,6 @@
 #include "lifecycle_msgs/msg/state.hpp"
 #include <lifecycle_msgs/srv/get_state.hpp>
 #include "frontier_exp_cpp/frontier_helper.hpp"
-#include <opencv2/core.hpp>
-#include <map>
 #include <optional>
 #include <cstdlib> // For generating random colors
 
@@ -207,6 +205,7 @@ private:
   std::optional<std::pair<double, double>> robot_vp_position_;
   std::set<int> active_marker_ids_;
   FrontierHelper::ClusterObj my_clusters_;
+  FrontierHelper::BannedAreas banned(1.0f);
 
   double viewpoint_depth_;
   bool is_sim_;
@@ -442,13 +441,11 @@ private:
     float resolution,
     float z_level = 0.0)
   {
-
     // Clear old markers
     clearOldMarkers(frame_id);
 
-    visualization_msgs::msg::MarkerArray marker_array;
-
     // Iterate through clusters and create markers
+    visualization_msgs::msg::MarkerArray marker_array;
     for (const auto & [cluster_id, points] : clusters) {
       // Create POINTS marker for the cluster
       visualization_msgs::msg::Marker points_marker;
@@ -594,7 +591,6 @@ private:
     return filtered_clusters;
   }
 
-  // Filter out clusters smaller than min_samples
   std::map<int, std::vector<Cell>> filterClusters(
     const std::map<int, std::vector<Cell>> & clusters,
     int min_samples)
@@ -611,6 +607,12 @@ private:
   bool tooClose(const Cell & frontier)
   {
     return distanceToRobot(frontier) <= robot_radius_;
+  }
+
+  bool stuck() const
+  {
+    return std::abs(last_robot_position_.first - robot_position_.first) < EPSILON &&
+           std::abs(last_robot_position_.second - robot_position_.second) < EPSILON;
   }
 
   void publishGoalFrontier()
@@ -662,9 +664,7 @@ private:
 
         int largest_cluster_id = FrontierHelper::findLargestCluster(my_clusters_.clusters);
         goal_frontier = my_clusters_.cell_centroids.at(largest_cluster_id);
-        if (std::abs(last_robot_position_.first - robot_position_.first) < EPSILON &&
-          std::abs(last_robot_position_.second - robot_position_.second) < EPSILON)
-        {
+        if (stuck()) {
           goal_frontier =
             my_clusters_.cell_centroids.at(
             FrontierHelper::findSecondLargestCluster(
@@ -678,9 +678,7 @@ private:
           get_logger(),
           "last_robot_position: %f, %f \nCurrent Robot Position: %f, %f", last_robot_position_.first, last_robot_position_.second,
           robot_position_.first, robot_position_.second);
-        if (std::abs(last_robot_position_.first - robot_position_.first) < EPSILON &&
-          std::abs(last_robot_position_.second - robot_position_.second) < EPSILON)
-        {
+        if (stuck()) {
           goal_frontier =
             my_clusters_.cell_centroids.at(
             FrontierHelper::findSecondLargestCluster(
@@ -800,8 +798,6 @@ private:
 
     return frontiers.at(best_frontier_idx_);
   }
-
-
 };
 
 // #include "rclcpp_components/register_node_macro.hpp"

@@ -36,6 +36,9 @@ public:
 
     /// @brief The list of cells that are to be avoided.
     std::vector<Cell> cells;
+
+    /// @brief Constructor to enforce radius initialization
+    explicit BannedAreas(float r) : radius(r), cells() {}
   };
 
   /// @brief Checks if a given position is outside the bounds of the map.
