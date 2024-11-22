@@ -4,6 +4,19 @@
 #include <numeric> // Required for std::iota in implementation
 #include <set>
 
+std::map<FrontierHelper::Cell, int> FrontierHelper::stageBanned(
+    const Cell & cell, std::map<Cell, int> & staged,
+    double rad)
+{
+  if (staged.count(cell) > 0) {
+    staged[cell]++;
+  } else {
+    staged[cell] = 1;
+  }
+  // Check whether or not I should implement radius?
+  return staged;
+}
+
 bool FrontierHelper::isPositionOutsideMap(
   const nav_msgs::msg::OccupancyGrid & map,
   const double & robot_x, const double & robot_y)

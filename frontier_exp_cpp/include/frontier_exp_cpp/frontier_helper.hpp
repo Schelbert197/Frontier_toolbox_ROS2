@@ -38,8 +38,17 @@ public:
     std::vector<Cell> cells;
 
     /// @brief Constructor to enforce radius initialization
-    explicit BannedAreas(float r) : radius(r), cells() {}
+    explicit BannedAreas(float r)
+    : radius(r), cells() {}
   };
+
+  /// @brief Stage a new area to be banned, or add to an existing area within radius
+  /// @param cell Location to be evaluated for banishment staging.
+  /// @param staged Hashmap of the existing places staged for banishment.
+  /// @param rad The radius in which to asses whether a location is near an existing cell.
+  static std::map<Cell, int> stageBanned(
+    const Cell & cell, std::map<Cell, int> & staged,
+    double rad);
 
   /// @brief Checks if a given position is outside the bounds of the map.
   /// @param map The occupancy grid map.

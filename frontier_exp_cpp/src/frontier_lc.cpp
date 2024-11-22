@@ -292,7 +292,6 @@ private:
         RCLCPP_WARN(get_logger(), "Mismatch in index. Skipping reset...");
       }
     }
-
   }
 
   void mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg)
