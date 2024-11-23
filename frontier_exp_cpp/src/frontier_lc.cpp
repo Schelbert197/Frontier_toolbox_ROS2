@@ -218,7 +218,7 @@ private:
   double entropy_radius_ = 2.5;
   bool use_naive_;
   bool use_clustering_;
-  bool eval_cluster_size_ = true;
+  bool eval_cluster_size_ = false;
   bool use_sampling_;
   bool use_entropy_calc_;
   int sampling_threshold;
@@ -669,28 +669,14 @@ private:
 
         int largest_cluster_id = FrontierHelper::findLargestCluster(my_clusters_, banned_, map_data_);
         goal_frontier = my_clusters_.cell_centroids.at(largest_cluster_id);
-        if (stuck()) {
-          goal_frontier =
-            my_clusters_.cell_centroids.at(
-            FrontierHelper::findSecondLargestCluster(
-              my_clusters_.
-              clusters));
-          RCLCPP_INFO(get_logger(), "Going to second largest cluster because robot hasn't moved");
-        }
+        goal_frontier = replanIfStuck(goal_frontier);
       } else {
         goal_frontier = bestScoringFrontier(my_clusters_.cell_centroids);
         RCLCPP_INFO(
           get_logger(),
           "last_robot_position: %f, %f \nCurrent Robot Position: %f, %f", last_robot_position_.first, last_robot_position_.second,
           robot_position_.first, robot_position_.second);
-        if (stuck()) {
-          goal_frontier =
-            my_clusters_.cell_centroids.at(
-            FrontierHelper::findSecondLargestCluster(
-              my_clusters_.
-              clusters));
-          RCLCPP_INFO(get_logger(), "Going to second largest cluster because robot hasn't moved");
-        }
+        goal_frontier = replanIfStuck(goal_frontier);
       }
     } else if (use_sampling_ && static_cast<int>(frontiers_.size()) > sampling_threshold) {
       sampled_frontiers_ = FrontierHelper::sampleRandomFrontiers(frontiers_, sampling_threshold);
@@ -741,6 +727,21 @@ private:
 
     map_with_frontiers_pub_->publish(modified_map);
     RCLCPP_DEBUG(get_logger(), "Published map with highlighted frontiers.");
+  }
+
+  Cell replanIfStuck(Cell & curr_goal)
+  {
+    if (stuck()) {
+      Cell goal_frontier =
+        my_clusters_.cell_centroids.at(
+        FrontierHelper::findSecondLargestCluster(
+          my_clusters_.
+          clusters));
+      RCLCPP_INFO(get_logger(), "Going to second largest cluster because robot hasn't moved");
+      return goal_frontier;
+    } else {
+      return curr_goal;
+    }
   }
 
   double distanceToRobot(const Cell & frontier)
