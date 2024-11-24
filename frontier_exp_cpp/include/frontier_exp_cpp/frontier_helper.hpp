@@ -81,6 +81,15 @@ public:
     nav_msgs::msg::OccupancyGrid & map_data,
     int x, int y);
 
+  /// @brief Checks if a map cell is a frontier by being empty and map edge.
+  /// @param map_data Occupancy grid map
+  /// @param x The x-coordinate of the cell.
+  /// @param y The y-coordinate of the cell.
+  /// @return True if is edge of map and free cell.
+  static bool explorableEdge(
+    const nav_msgs::msg::OccupancyGrid & map_data,
+    int x, int y);
+
   /// @brief Checks if the line between two points is occluded.
   /// @param x1 The x-coordinate of the start point.
   /// @param y1 The y-coordinate of the start point.

@@ -98,6 +98,30 @@ bool FrontierHelper::hasFreeNeighbor(
   return false;
 }
 
+bool FrontierHelper::explorableEdge(
+  const nav_msgs::msg::OccupancyGrid & map_data,
+  int x, int y)
+{
+  // Extract map dimensions
+  const int width = map_data.info.width;
+  const int height = map_data.info.height;
+
+  // Ensure (x, y) is within valid bounds
+  if (x < 0 || x >= width || y < 0 || y >= height) {
+    return false; // Out of bounds, cannot be an edge
+  }
+
+  // Compute the index in the data array and check if cell is empty
+  int index = y * width + x;
+  if (map_data.data[index] != 0) {
+    return false; // Not empty, so not considered an edge
+  }
+
+  // Check if the cell is on the edge of the map
+  // A cell is on the edge if it's in the first/last row or first/last column
+  return (x == 0 || x == width - 1 || y == 0 || y == height - 1);
+}
+
 bool FrontierHelper::occluded(
   int x1, int y1, int x2, int y2, int width,
   const std::vector<int8_t> & map_data)

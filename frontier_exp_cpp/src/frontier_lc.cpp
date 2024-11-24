@@ -218,7 +218,7 @@ private:
   double entropy_radius_ = 2.5;
   bool use_naive_;
   bool use_clustering_;
-  bool eval_cluster_size_ = false;
+  bool eval_cluster_size_ = true;
   bool use_sampling_;
   bool use_entropy_calc_;
   int sampling_threshold;
@@ -310,7 +310,6 @@ private:
       robot_vp_position_ = getRobotViewpoint();
       if (robot_vp_position_) {
         findFrontiers();
-        cleanupFrontiers();
 
         if (use_clustering_) {
           my_clusters_.clusters = clusterFrontiers(frontiers_, 6.0, 5);
@@ -407,7 +406,9 @@ private:
     for (int y = 0; y < height; ++y) {
       for (int x = 0; x < width; ++x) {
         int idx = y * width + x;
-        if (data[idx] == -1 && FrontierHelper::hasFreeNeighbor(map_data_, x, y)) {
+        if (data[idx] == -1 && FrontierHelper::hasFreeNeighbor(map_data_, x, y) && !tooClose(std::make_pair(x, y))) {
+          frontiers_.emplace_back(x, y);
+        } else if(FrontierHelper::explorableEdge(map_data_, x, y) && !tooClose(std::make_pair(x, y))) {
           frontiers_.emplace_back(x, y);
         }
       }
@@ -420,24 +421,6 @@ private:
     }
     // Print the vector contents of the frontier vector
     RCLCPP_DEBUG(get_logger(), "%s", ss.str().c_str());
-  }
-
-  void cleanupFrontiers()
-  {
-    std::vector<Cell> valid_frontiers;
-    const auto & data = map_data_.data;
-
-    for (const auto & frontier : frontiers_) {
-      int idx = frontier.second * map_data_.info.width + frontier.first;
-      if (data[idx] == -1 &&
-        FrontierHelper::hasFreeNeighbor(
-          map_data_, frontier.first,
-          frontier.second) && !tooClose(frontier))
-      {
-        valid_frontiers.push_back(frontier);
-      }
-    }
-    frontiers_ = valid_frontiers;
   }
 
   void publishClustersAsMarkers(
