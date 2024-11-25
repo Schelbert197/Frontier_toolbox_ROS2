@@ -135,7 +135,7 @@ private:
     goal_arrow.action = visualization_msgs::msg::Marker::ADD;
     goal_arrow.pose.position.x = x;
     goal_arrow.pose.position.y = y;
-    goal_arrow.pose.position.z = 0.01;
+    goal_arrow.pose.position.z = 0.1;
     goal_arrow.pose.orientation = orientation;
     goal_arrow.scale.x = 0.5;
     goal_arrow.scale.y = 0.1;

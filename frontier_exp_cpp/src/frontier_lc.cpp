@@ -31,6 +31,8 @@ public:
     // Init Descriptions
     auto use_naive_des = rcl_interfaces::msg::ParameterDescriptor{};
     auto use_clustering_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto eval_cluster_size_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto free_edge_des = rcl_interfaces::msg::ParameterDescriptor{};
     auto use_action_client_des = rcl_interfaces::msg::ParameterDescriptor{};
     auto viewpoint_depth_des = rcl_interfaces::msg::ParameterDescriptor{};
     auto entropy_radius_des = rcl_interfaces::msg::ParameterDescriptor{};
@@ -39,13 +41,20 @@ public:
     auto use_sampling_des = rcl_interfaces::msg::ParameterDescriptor{};
     auto sampling_threshold_des = rcl_interfaces::msg::ParameterDescriptor{};
     auto banning_radius_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto stuck_tolerance_des = rcl_interfaces::msg::ParameterDescriptor{};
 
     // Parameter Descriptions and Declarations
     use_naive_des.description = "Choose to use naive frontier selection or mutual information";
     declare_parameter("use_naive", false, use_naive_des);
     use_clustering_des.description =
-      "Choose to use clustering in the mutual information calculation";
-    declare_parameter("use_clustering", false, use_clustering_des);
+      "Choose to use clustering to organize frontiers using DBSCAN";
+    declare_parameter("use_clustering", true, use_clustering_des);
+    eval_cluster_size_des.description =
+      "Choose to select goal cluster by cluster size";
+    declare_parameter("eval_cluster_size", false, eval_cluster_size_des);
+    free_edge_des.description =
+      "Choose to consider an unoccupied map edge as a frontier";
+    declare_parameter("consider_free_edge", false, free_edge_des);
     use_action_client_des.description =
       "Choose to use custom action client node (true) or just publish goal pose to nav2 (false)";
     declare_parameter("use_action_client_node", false, use_action_client_des);
@@ -70,11 +79,16 @@ public:
     banning_radius_des.description =
       "The radius around which to consider a goal position banished from being a goal.";
     declare_parameter("banning_radius", 1.0, banning_radius_des);
+    stuck_tolerance_des.description =
+      "The tolerance which to consider the robot to be stuck (hasn't moved more than x[m]).";
+    declare_parameter("stuck_tolerance", 0.001, stuck_tolerance_des);
 
     // Get Parameters
     is_sim_ = get_parameter("use_sim_time").as_bool();
     use_naive_ = get_parameter("use_naive").as_bool();
     use_clustering_ = get_parameter("use_clustering").as_bool();
+    eval_cluster_size_ = get_parameter("eval_cluster_size").as_bool();
+    consider_free_edge_ = get_parameter("consider_free_edge").as_bool();
     use_action_client_ = get_parameter("use_action_client_node").as_bool();
     viewpoint_depth_ = get_parameter("viewpoint_depth").as_double();
     entropy_radius_ = get_parameter("entropy_radius").as_double();
@@ -83,6 +97,7 @@ public:
     use_sampling_ = get_parameter("use_sampling").as_bool();
     sampling_threshold = get_parameter("sampling_threshold").as_int();
     banned_.radius = get_parameter("banning_radius").as_double();
+    EPSILON = get_parameter("stuck_tolerance").as_double();
 
     // Create separate callback groups for each service client
     nav_to_pose_callback_group_ = this->create_callback_group(
@@ -218,7 +233,8 @@ private:
   double entropy_radius_ = 2.5;
   bool use_naive_;
   bool use_clustering_;
-  bool eval_cluster_size_ = true;
+  bool eval_cluster_size_;
+  bool consider_free_edge_;
   bool use_sampling_;
   bool use_entropy_calc_;
   int sampling_threshold;
@@ -314,6 +330,7 @@ private:
         if (use_clustering_) {
           my_clusters_.clusters = clusterFrontiers(frontiers_, 6.0, 5);
           publishClustersAsMarkers(my_clusters_.clusters, "/map", map_data_.info.resolution, 0.06);
+          updateClusters(); // sets cluster centroid array
         }
 
         publishGoalFrontier();
@@ -406,9 +423,14 @@ private:
     for (int y = 0; y < height; ++y) {
       for (int x = 0; x < width; ++x) {
         int idx = y * width + x;
-        if (data[idx] == -1 && FrontierHelper::hasFreeNeighbor(map_data_, x, y) && !tooClose(std::make_pair(x, y))) {
+        if (data[idx] == -1 &&
+          FrontierHelper::hasFreeNeighbor(map_data_, x, y) && !tooClose(std::make_pair(x, y)))
+        {
           frontiers_.emplace_back(x, y);
-        } else if(FrontierHelper::explorableEdge(map_data_, x, y) && !tooClose(std::make_pair(x, y))) {
+        } else if (consider_free_edge_ && FrontierHelper::explorableEdge(
+            map_data_, x,
+            y) && !tooClose(std::make_pair(x, y)))
+        {
           frontiers_.emplace_back(x, y);
         }
       }
@@ -608,7 +630,10 @@ private:
     if (frontiers_.empty()) {
       RCLCPP_INFO(get_logger(), "No frontiers available.");
       return;
-    }
+    } else if (use_clustering_ && my_clusters_.cell_centroids.size() < 1) {
+      RCLCPP_INFO(get_logger(), "No valid clusters available.");
+      return;
+    } // Exits if there aren't any goals to visit
 
     if (!use_action_client_) {
       publishToNav2PlannerServer(selectGoal());
@@ -619,59 +644,69 @@ private:
 
   Cell selectGoal()
   {
-    Cell goal_frontier;
-    if (use_naive_ == true) {
-      // Using naive algorithm
-      if (use_sampling_ && static_cast<int>(frontiers_.size()) > sampling_threshold) {
-        // Using sampling method if selected to make direct comparison
-        sampled_frontiers_ = FrontierHelper::sampleRandomFrontiers(frontiers_, sampling_threshold);
-        goal_frontier = *std::min_element(
-          sampled_frontiers_.begin(), sampled_frontiers_.end(),
-          [this](const auto & f1, const auto & f2)
-          {
-            return distanceToRobotVP(f1) < distanceToRobotVP(f2);
-          });
-      } else {
-        // Default method
-        goal_frontier = *std::min_element(
-          frontiers_.begin(), frontiers_.end(), [this](const auto & f1, const auto & f2)
-          {
-            return distanceToRobotVP(f1) < distanceToRobotVP(f2);
-          });
-      }
+    Cell goal_frontier; // Define goal frontier
+    if (use_naive_) {
+      goal_frontier = selectNaiveGoal();
     } else if (use_clustering_) {
-      my_clusters_.cell_centroids = FrontierHelper::getCentroidCells(
-        map_data_,
-        my_clusters_.world_centroids);
-      if (eval_cluster_size_) {
-
-        RCLCPP_INFO(
-          get_logger(),
-          "Number of clusters: %ld\nNumber of centroids: %ld",
-          my_clusters_.clusters.size(), my_clusters_.cell_centroids.size());
-
-        int largest_cluster_id = FrontierHelper::findLargestCluster(my_clusters_, banned_, map_data_);
-        goal_frontier = my_clusters_.cell_centroids.at(largest_cluster_id);
-        goal_frontier = replanIfStuck(goal_frontier);
-      } else {
-        goal_frontier = bestScoringFrontier(my_clusters_.cell_centroids);
-        RCLCPP_INFO(
-          get_logger(),
-          "last_robot_position: %f, %f \nCurrent Robot Position: %f, %f", last_robot_position_.first, last_robot_position_.second,
-          robot_position_.first, robot_position_.second);
-        goal_frontier = replanIfStuck(goal_frontier);
-      }
+      goal_frontier = selectClusterGoal();
     } else if (use_sampling_ && static_cast<int>(frontiers_.size()) > sampling_threshold) {
-      sampled_frontiers_ = FrontierHelper::sampleRandomFrontiers(frontiers_, sampling_threshold);
-      goal_frontier = bestScoringFrontier(sampled_frontiers_);
-      RCLCPP_DEBUG(get_logger(), "Using sampling to get best frontier");
+      goal_frontier = selectSampledGoal();
     } else {
       goal_frontier = bestScoringFrontier(frontiers_);
     }
 
     last_robot_position_ = robot_position_;
-
     return goal_frontier;
+  }
+
+  // Helper function to update clusters
+  void updateClusters()
+  {
+    my_clusters_.cell_centroids = FrontierHelper::getCentroidCells(
+      map_data_, my_clusters_.world_centroids);
+    RCLCPP_INFO(
+      get_logger(),
+      "Number of clusters: %ld\nNumber of centroids: %ld",
+      my_clusters_.clusters.size(), my_clusters_.cell_centroids.size());
+  }
+
+  // Helper function to handle naive goal selection
+  Cell selectNaiveGoal()
+  {
+    if (use_clustering_) {
+      return selectByDistance(my_clusters_.cell_centroids);
+    } else if (use_sampling_ && static_cast<int>(frontiers_.size()) > sampling_threshold) {
+      return selectByDistance(
+        FrontierHelper::sampleRandomFrontiers(
+          frontiers_,
+          sampling_threshold));
+    }
+    return selectByDistance(frontiers_);
+  }
+
+  // Helper function to handle clustered goal selection
+  Cell selectClusterGoal()
+  {
+    if (eval_cluster_size_) {
+      int largest_cluster_id = FrontierHelper::findLargestCluster(my_clusters_, banned_, map_data_);
+      RCLCPP_INFO(get_logger(), "selecting cluster %d with size: %ld", largest_cluster_id, my_clusters_.clusters.size());
+      return replanIfStuck(my_clusters_.cell_centroids.at(largest_cluster_id));
+    }
+    Cell goal_frontier = bestScoringFrontier(my_clusters_.cell_centroids);
+    RCLCPP_INFO(
+      get_logger(),
+      "last_robot_position: %f, %f \nCurrent Robot Position: %f, %f",
+      last_robot_position_.first, last_robot_position_.second,
+      robot_position_.first, robot_position_.second);
+    return replanIfStuck(goal_frontier);
+  }
+
+  // Helper function to handle sampled goal selection
+  Cell selectSampledGoal()
+  {
+    sampled_frontiers_ = FrontierHelper::sampleRandomFrontiers(frontiers_, sampling_threshold);
+    RCLCPP_DEBUG(get_logger(), "Using sampling to get best frontier");
+    return bestScoringFrontier(sampled_frontiers_);
   }
 
   void publishToNav2ActionClient(const Cell & goal_frontier)
@@ -742,6 +777,16 @@ private:
       std::tie(rx, ry) = *robot_vp_position_;   // Dereferencing pointer :O
     }
     return std::hypot(fx - rx, fy - ry);
+  }
+
+  Cell selectByDistance(const std::vector<Cell> & candidates)
+  {
+    auto goal_frontier = *std::min_element(
+      candidates.begin(), candidates.end(), [this](const auto & f1, const auto & f2)
+      {
+        return distanceToRobotVP(f1) < distanceToRobotVP(f2);
+      });
+    return goal_frontier;
   }
 
   Cell bestScoringFrontier(const std::vector<Cell> & frontiers)
