@@ -376,6 +376,298 @@ Visualization Manager:
         Value: /map_with_frontiers_updates
       Use Timestamp: false
       Value: true
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Marker
+      Namespaces:
+        "": true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /client_goal
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 25; 255; 0
+      Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Lines
+      Line Width: 0.029999999329447746
+      Name: Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /received_global_plan
+      Value: true
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Marker
+      Namespaces:
+        "": true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /vp
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: MarkerArray
+      Namespaces:
+        cluster_0: true
+        cluster_1: true
+        cluster_10: true
+        cluster_100: true
+        cluster_101: true
+        cluster_102: true
+        cluster_103: true
+        cluster_104: true
+        cluster_105: true
+        cluster_106: true
+        cluster_107: true
+        cluster_108: true
+        cluster_109: true
+        cluster_11: true
+        cluster_110: true
+        cluster_111: true
+        cluster_112: true
+        cluster_113: true
+        cluster_114: true
+        cluster_115: true
+        cluster_116: true
+        cluster_117: true
+        cluster_118: true
+        cluster_119: true
+        cluster_12: true
+        cluster_120: true
+        cluster_121: true
+        cluster_122: true
+        cluster_123: true
+        cluster_124: true
+        cluster_125: true
+        cluster_126: true
+        cluster_127: true
+        cluster_128: true
+        cluster_129: true
+        cluster_13: true
+        cluster_130: true
+        cluster_131: true
+        cluster_132: true
+        cluster_133: true
+        cluster_134: true
+        cluster_135: true
+        cluster_136: true
+        cluster_137: true
+        cluster_138: true
+        cluster_139: true
+        cluster_14: true
+        cluster_140: true
+        cluster_141: true
+        cluster_142: true
+        cluster_143: true
+        cluster_144: true
+        cluster_145: true
+        cluster_146: true
+        cluster_147: true
+        cluster_148: true
+        cluster_149: true
+        cluster_15: true
+        cluster_150: true
+        cluster_151: true
+        cluster_152: true
+        cluster_153: true
+        cluster_154: true
+        cluster_155: true
+        cluster_156: true
+        cluster_157: true
+        cluster_158: true
+        cluster_159: true
+        cluster_16: true
+        cluster_160: true
+        cluster_161: true
+        cluster_162: true
+        cluster_163: true
+        cluster_164: true
+        cluster_165: true
+        cluster_166: true
+        cluster_167: true
+        cluster_168: true
+        cluster_169: true
+        cluster_17: true
+        cluster_170: true
+        cluster_171: true
+        cluster_172: true
+        cluster_173: true
+        cluster_174: true
+        cluster_175: true
+        cluster_176: true
+        cluster_177: true
+        cluster_178: true
+        cluster_179: true
+        cluster_18: true
+        cluster_180: true
+        cluster_181: true
+        cluster_182: true
+        cluster_183: true
+        cluster_184: true
+        cluster_185: true
+        cluster_186: true
+        cluster_187: true
+        cluster_188: true
+        cluster_189: true
+        cluster_19: true
+        cluster_190: true
+        cluster_191: true
+        cluster_192: true
+        cluster_193: true
+        cluster_194: true
+        cluster_195: true
+        cluster_196: true
+        cluster_197: true
+        cluster_198: true
+        cluster_199: true
+        cluster_2: true
+        cluster_20: true
+        cluster_200: true
+        cluster_201: true
+        cluster_202: true
+        cluster_203: true
+        cluster_204: true
+        cluster_205: true
+        cluster_206: true
+        cluster_207: true
+        cluster_208: true
+        cluster_209: true
+        cluster_21: true
+        cluster_210: true
+        cluster_211: true
+        cluster_212: true
+        cluster_213: true
+        cluster_214: true
+        cluster_215: true
+        cluster_216: true
+        cluster_217: true
+        cluster_218: true
+        cluster_219: true
+        cluster_22: true
+        cluster_220: true
+        cluster_221: true
+        cluster_222: true
+        cluster_223: true
+        cluster_224: true
+        cluster_225: true
+        cluster_226: true
+        cluster_23: true
+        cluster_24: true
+        cluster_25: true
+        cluster_26: true
+        cluster_27: true
+        cluster_28: true
+        cluster_29: true
+        cluster_3: true
+        cluster_30: true
+        cluster_31: true
+        cluster_32: true
+        cluster_33: true
+        cluster_34: true
+        cluster_35: true
+        cluster_36: true
+        cluster_37: true
+        cluster_38: true
+        cluster_39: true
+        cluster_4: true
+        cluster_40: true
+        cluster_41: true
+        cluster_42: true
+        cluster_43: true
+        cluster_44: true
+        cluster_45: true
+        cluster_46: true
+        cluster_47: true
+        cluster_48: true
+        cluster_49: true
+        cluster_5: true
+        cluster_50: true
+        cluster_51: true
+        cluster_52: true
+        cluster_53: true
+        cluster_54: true
+        cluster_55: true
+        cluster_56: true
+        cluster_57: true
+        cluster_58: true
+        cluster_59: true
+        cluster_6: true
+        cluster_60: true
+        cluster_61: true
+        cluster_62: true
+        cluster_63: true
+        cluster_64: true
+        cluster_65: true
+        cluster_66: true
+        cluster_67: true
+        cluster_68: true
+        cluster_69: true
+        cluster_7: true
+        cluster_70: true
+        cluster_71: true
+        cluster_72: true
+        cluster_73: true
+        cluster_74: true
+        cluster_75: true
+        cluster_76: true
+        cluster_77: true
+        cluster_78: true
+        cluster_79: true
+        cluster_8: true
+        cluster_80: true
+        cluster_81: true
+        cluster_82: true
+        cluster_83: true
+        cluster_84: true
+        cluster_85: true
+        cluster_86: true
+        cluster_87: true
+        cluster_88: true
+        cluster_89: true
+        cluster_9: true
+        cluster_90: true
+        cluster_91: true
+        cluster_92: true
+        cluster_93: true
+        cluster_94: true
+        cluster_95: true
+        cluster_96: true
+        cluster_97: true
+        cluster_98: true
+        cluster_99: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /clusters
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -410,7 +702,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 8.580423355102539
+      Distance: 8.895708084106445
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1

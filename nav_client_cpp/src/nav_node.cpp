@@ -9,6 +9,7 @@
 #include "std_srvs/srv/empty.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "geometry_msgs/msg/quaternion.hpp"
+#include "visualization_msgs/msg/marker.hpp"
 #include "tf2/LinearMath/Quaternion.h"
 #include "tf2/LinearMath/Matrix3x3.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
@@ -59,7 +60,12 @@ public:
     auto param = rcl_interfaces::msg::ParameterDescriptor{};
     param.description = "The frame in which poses are sent.";
     declare_parameter("pose_frame", "map", param);
-    goal_msg_.pose.header.frame_id = get_parameter("pose_frame").get_parameter_value().get<std::string>();
+    pose_frame_ = get_parameter("pose_frame").get_parameter_value().get<std::string>();
+    goal_msg_.pose.header.frame_id = pose_frame_;
+    auto repub = rcl_interfaces::msg::ParameterDescriptor{};
+    repub.description = "The frame in which poses are sent.";
+    declare_parameter("republish_same_goal", true, repub);
+    repub_same_goal_ = get_parameter("republish_same_goal").as_bool();
 
     // Timers
     timer_ = create_wall_timer(
@@ -78,6 +84,7 @@ public:
 
     // Publishers
     pub_waypoint_goal_ = create_publisher<std_msgs::msg::String>("jackal_goal", 10);
+    pub_goal_marker_ = create_publisher<visualization_msgs::msg::Marker>("/client_goal", 10);
 
     // Action Clients
     act_nav_to_pose_ = rclcpp_action::create_client<nav2_msgs::action::NavigateToPose>(
@@ -92,9 +99,11 @@ private:
   rclcpp::Service<std_srvs::srv::Empty>::SharedPtr srv_cancel_nav_;
   rclcpp_action::Client<nav2_msgs::action::NavigateToPose>::SharedPtr act_nav_to_pose_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pub_waypoint_goal_;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr pub_goal_marker_;
 
   double rate_ = 100.0; //Hz
   double interval_ = 1.0 / rate_; //seconds
+  std::string pose_frame_;
   State state_ = State::IDLE;
   State state_last_ = state_;
   State state_next_ = state_;
@@ -106,12 +115,54 @@ private:
   std::shared_ptr<rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateToPose>::WrappedResult>
   result_ = nullptr;
   std::shared_future<std::shared_ptr<action_msgs::srv::CancelGoal_Response>> cancel_result_future_;
+  bool cancel_and_replan_ = false;
+  bool repub_same_goal_;
   
+  bool are_goals_equal(const geometry_msgs::msg::Pose& pose1, const geometry_msgs::msg::Pose& pose2) {
+  const double epsilon = 1e-5;  // Define tolerance level
+  return std::fabs(pose1.position.x - pose2.position.x) < epsilon &&
+         std::fabs(pose1.position.y - pose2.position.y) < epsilon &&
+         std::fabs(pose1.orientation.z - pose2.orientation.z) < epsilon &&  // Checking only z and w
+         std::fabs(pose1.orientation.w - pose2.orientation.w) < epsilon;
+  }
+
+  void publish_goal_marker(const double & x, const double & y, const geometry_msgs::msg::Quaternion & orientation) {
+    visualization_msgs::msg::Marker goal_arrow;
+    goal_arrow.header.frame_id = pose_frame_;
+    goal_arrow.header.stamp = get_clock()->now();
+    goal_arrow.id = 0;
+    goal_arrow.type = visualization_msgs::msg::Marker::ARROW;
+    goal_arrow.action = visualization_msgs::msg::Marker::ADD;
+    goal_arrow.pose.position.x = x;
+    goal_arrow.pose.position.y = y;
+    goal_arrow.pose.position.z = 0.1;
+    goal_arrow.pose.orientation = orientation;
+    goal_arrow.scale.x = 0.5;
+    goal_arrow.scale.y = 0.1;
+    goal_arrow.scale.z = 0.1;
+    goal_arrow.color.r = 1.0f;
+    goal_arrow.color.g = 0.5f;
+    goal_arrow.color.b = 0.0f;
+    goal_arrow.color.a = 1.0;
+
+    pub_goal_marker_->publish(goal_arrow);
+  }
 
   void srv_nav_to_pose_callback(
     const std::shared_ptr<nav_client_cpp::srv::NavToPose::Request> request,
     std::shared_ptr<nav_client_cpp::srv::NavToPose::Response>
   ) {
+
+    // Skip if goal is the same
+    geometry_msgs::msg::Pose new_pose;
+    new_pose.position.x = request->x;
+    new_pose.position.y = request->y;
+    new_pose.orientation = rpy_to_quaternion(0.0, 0.0, request->theta);
+    
+    if (goal_handle_ && !repub_same_goal_ && are_goals_equal(goal_msg_.pose.pose, new_pose)) {
+      RCLCPP_INFO(this->get_logger(), "Received goal is the same as the current one. Continuing...");
+      return;
+    }
 
     // Check if there is an active goal and cancel it before sending a new one
     if (goal_handle_ && (
@@ -129,6 +180,7 @@ private:
                   goal_msg_.pose.pose.orientation.w);
 
       //Initiate action call
+      cancel_and_replan_ = true;
       state_next_ = State::CANCEL_CURRENT_GOAL;
     } else {
       //Store requested pose
@@ -152,6 +204,7 @@ private:
   ) {
     RCLCPP_INFO_STREAM(get_logger(), "Cancelling navigation.");
     act_nav_to_pose_->async_cancel_all_goals();
+    cancel_and_replan_ = false;
     state_next_ = State::IDLE;
   }
 
@@ -177,6 +230,9 @@ private:
                                   << ", y = " << feedback_->current_pose.pose.position.y
                                   << ", theta = " << yaw
       );
+      publish_goal_marker(goal_msg_.pose.pose.position.x,
+                          goal_msg_.pose.pose.position.y,
+                          goal_msg_.pose.pose.orientation);
     }
   }
 
@@ -195,8 +251,14 @@ private:
         pub_waypoint_goal_->publish(jackal_goal_msg_);
         return;
       case rclcpp_action::ResultCode::CANCELED:
-        RCLCPP_ERROR(this->get_logger(), "Goal was canceled");
-        jackal_goal_msg_.data = "Canceled";
+        if (cancel_and_replan_) {
+          RCLCPP_WARN(this->get_logger(), "Previous goal canceled. Planing next...");
+          jackal_goal_msg_.data = "Canceled"; // Maybe change this to replanned???
+          state_next_ = State::SEND_GOAL;
+        } else {
+          RCLCPP_WARN(this->get_logger(), "Goal was canceled");
+          jackal_goal_msg_.data = "Canceled";
+        }
         pub_waypoint_goal_->publish(jackal_goal_msg_);
         return;
       default:
@@ -271,9 +333,11 @@ private:
             std::bind(&NavToPose::result_callback, this, std::placeholders::_1);
           act_nav_to_pose_->async_send_goal(goal_msg_, send_goal_options);
 
+          cancel_and_replan_ = false;
           state_next_ = State::WAIT_FOR_GOAL_RESPONSE;
         } else {
           RCLCPP_ERROR_STREAM(get_logger(), "Action server not available, aborting.");
+          cancel_and_replan_ = false;
           state_next_ = State::IDLE;
         }
 

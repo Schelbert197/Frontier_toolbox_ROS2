@@ -22,6 +22,7 @@
   <depend>tf2_geometry_msgs</depend>
   <depend>std_srvs</depend>
   <depend>nav_client_cpp</depend>
+  <depend>opencv4</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

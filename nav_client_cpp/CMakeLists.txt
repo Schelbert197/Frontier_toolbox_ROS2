@@ -11,6 +11,7 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
@@ -28,7 +29,7 @@ rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME}_srv "rosidl
 
 add_executable(nav_node src/nav_node.cpp)
 ament_target_dependencies(nav_node
-  rclcpp rclcpp_action std_srvs geometry_msgs tf2 tf2_geometry_msgs nav2_msgs)
+  rclcpp rclcpp_action std_srvs geometry_msgs visualization_msgs tf2 tf2_geometry_msgs nav2_msgs)
 target_link_libraries(nav_node "${cpp_typesupport_target}")
 
 target_include_directories(nav_node PUBLIC

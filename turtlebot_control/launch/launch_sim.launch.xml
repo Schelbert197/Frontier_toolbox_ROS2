@@ -1,11 +1,21 @@
 <launch>
     <!-- Arguments -->
+    <arg name="arena" default="world" description="Select whether to use 'world' (default) or 'house' arena"/>
 
-    <!-- Launch the house simulation for the turtlebot in gz classic -->
-    <include file="$(find-pkg-share turtlebot3_gazebo)/launch/turtlebot3_world.launch.py" >
-        <arg name="x_pose" value="-1.0"/>
-        <arg name="y_pose" value="-1.5"/>
-    </include>
+    <!-- Conditionally launch either turtlebot3_world.launch.py or turtlebot3_house.launch.py -->
+    <group if="$(eval '\'$(var arena)\' == \'world\'')">
+        <include file="$(find-pkg-share turtlebot3_gazebo)/launch/turtlebot3_world.launch.py">
+            <arg name="x_pose" value="-1.0"/>
+            <arg name="y_pose" value="-1.5"/>
+        </include>
+    </group>
+
+    <group if="$(eval '\'$(var arena)\' == \'house\'')">
+        <include file="$(find-pkg-share turtlebot3_gazebo)/launch/turtlebot3_house.launch.py">
+            <arg name="x_pose" value="-6.5"/>
+            <arg name="y_pose" value="-3.0"/>
+        </include>
+    </group>
 
     <!-- Launch rviz to show the robot moving around -->
     <include file="$(find-pkg-share turtlebot_control)/launch/turtlebot3_rviz.launch.py" />
@@ -22,4 +32,3 @@
     </include>
 
 </launch>
-  

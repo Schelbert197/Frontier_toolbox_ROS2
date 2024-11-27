@@ -1,21 +1,22 @@
 #include <rclcpp/rclcpp.hpp>
-#include <nav_msgs/msg/occupancy_grid.hpp>
+#include <rclcpp_lifecycle/lifecycle_node.hpp>
+#include <nav2_util/lifecycle_node.hpp>
 #include "std_srvs/srv/empty.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "nav_client_cpp/srv/nav_to_pose.hpp"
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include "visualization_msgs/msg/marker.hpp"
+#include "visualization_msgs/msg/marker_array.hpp"
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#include <rclcpp_lifecycle/lifecycle_node.hpp>
 #include <rcl_interfaces/msg/parameter_descriptor.hpp>
-#include <nav2_util/lifecycle_node.hpp>
 #include "lifecycle_msgs/msg/state.hpp"
 #include <lifecycle_msgs/srv/get_state.hpp>
-#include <cmath>
-#include <vector>
-#include <algorithm>
+#include "frontier_exp_cpp/frontier_helper.hpp"
+#include <optional>
+#include <cstdlib> // For generating random colors
 
 
 class FrontierExplorationNode : public nav2_util::LifecycleNode,
@@ -27,13 +28,76 @@ public:
   {
     RCLCPP_INFO(get_logger(), "Frontier explorer lifecycle node initialized");
 
-    // Parameter to specify if we are in simulation or real robot
-    // declare_parameter("use_sim_time", false);
-    is_sim_ = get_parameter("use_sim_time").as_bool();
+    // Init Descriptions
+    auto use_naive_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto use_clustering_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto eval_cluster_size_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto free_edge_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto use_action_client_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto viewpoint_depth_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto entropy_radius_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto robot_radius_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto entropy_calc_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto use_sampling_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto sampling_threshold_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto banning_radius_des = rcl_interfaces::msg::ParameterDescriptor{};
+    auto stuck_tolerance_des = rcl_interfaces::msg::ParameterDescriptor{};
 
-    // Store frontiers and map information
-    declare_parameter("viewpoint_depth", 1.0);
+    // Parameter Descriptions and Declarations
+    use_naive_des.description = "Choose to use naive frontier selection or mutual information";
+    declare_parameter("use_naive", false, use_naive_des);
+    use_clustering_des.description =
+      "Choose to use clustering to organize frontiers using DBSCAN";
+    declare_parameter("use_clustering", true, use_clustering_des);
+    eval_cluster_size_des.description =
+      "Choose to select goal cluster by cluster size";
+    declare_parameter("eval_cluster_size", false, eval_cluster_size_des);
+    free_edge_des.description =
+      "Choose to consider an unoccupied map edge as a frontier";
+    declare_parameter("consider_free_edge", false, free_edge_des);
+    use_action_client_des.description =
+      "Choose to use custom action client node (true) or just publish goal pose to nav2 (false)";
+    declare_parameter("use_action_client_node", false, use_action_client_des);
+    viewpoint_depth_des.description =
+      "The distance in front of the robot that the naive algorithm chooses a frontier by min dist [m]";
+    declare_parameter("viewpoint_depth", 1.0, viewpoint_depth_des);
+    entropy_radius_des.description =
+      "The radius around a frontier considered in a state update estimation";
+    declare_parameter("entropy_radius", 2.5, entropy_radius_des);
+    robot_radius_des.description =
+      "The radius around the robot in [m] to determine if a frontier is too close";
+    declare_parameter("robot_radius", 0.35, robot_radius_des);
+    entropy_calc_des.description =
+      "Choose whether to calculate entropy or select based on raw unknown count";
+    declare_parameter("use_entropy_calc", false, entropy_calc_des);
+    use_sampling_des.description =
+      "Choose whether to use sampling to decrease computational load with many frontiers";
+    declare_parameter("use_sampling", false, use_sampling_des);
+    sampling_threshold_des.description =
+      "The threshold at which after this many frontiers, the calculation will be sampled";
+    declare_parameter("sampling_threshold", 500, sampling_threshold_des);
+    banning_radius_des.description =
+      "The radius around which to consider a goal position banished from being a goal.";
+    declare_parameter("banning_radius", 1.0, banning_radius_des);
+    stuck_tolerance_des.description =
+      "The tolerance which to consider the robot to be stuck (hasn't moved more than x[m]).";
+    declare_parameter("stuck_tolerance", 0.001, stuck_tolerance_des);
+
+    // Get Parameters
+    is_sim_ = get_parameter("use_sim_time").as_bool();
+    use_naive_ = get_parameter("use_naive").as_bool();
+    use_clustering_ = get_parameter("use_clustering").as_bool();
+    eval_cluster_size_ = get_parameter("eval_cluster_size").as_bool();
+    consider_free_edge_ = get_parameter("consider_free_edge").as_bool();
+    use_action_client_ = get_parameter("use_action_client_node").as_bool();
     viewpoint_depth_ = get_parameter("viewpoint_depth").as_double();
+    entropy_radius_ = get_parameter("entropy_radius").as_double();
+    robot_radius_ = get_parameter("robot_radius").as_double();
+    use_entropy_calc_ = get_parameter("use_entropy_calc").as_bool();
+    use_sampling_ = get_parameter("use_sampling").as_bool();
+    sampling_threshold = get_parameter("sampling_threshold").as_int();
+    banned_.radius = get_parameter("banning_radius").as_double();
+    EPSILON = get_parameter("stuck_tolerance").as_double();
 
     // Create separate callback groups for each service client
     nav_to_pose_callback_group_ = this->create_callback_group(
@@ -71,6 +135,13 @@ public:
       "jackal_goal", 10, std::bind(
         &FrontierExplorationNode::goalPubCallback, this,
         std::placeholders::_1));
+
+    pub_goal_marker_ = create_publisher<visualization_msgs::msg::Marker>("/vp", 10);
+
+    clusters_pub_ =
+      create_publisher<visualization_msgs::msg::MarkerArray>(
+      "/clusters",
+      rclcpp::QoS(rclcpp::KeepLast(1)).durability(rclcpp::DurabilityPolicy::TransientLocal));
     return nav2_util::CallbackReturn::SUCCESS;
   }
 
@@ -79,6 +150,8 @@ public:
     RCLCPP_INFO(get_logger(), "Activating...");
     goal_publisher_->on_activate();
     map_with_frontiers_pub_->on_activate();
+    pub_goal_marker_->on_activate();
+    clusters_pub_->on_activate();
 
     // Create the service clients in on_activate
     nav_to_pose_client_ = this->create_client<nav_client_cpp::srv::NavToPose>(
@@ -94,6 +167,8 @@ public:
     RCLCPP_INFO(get_logger(), "Deactivating...");
     goal_publisher_->on_deactivate();
     map_with_frontiers_pub_->on_deactivate();
+    pub_goal_marker_->on_deactivate();
+    clusters_pub_->on_deactivate();
     // Reset navigation clients
     nav_to_pose_client_.reset();
     cancel_nav_client_.reset();
@@ -124,6 +199,10 @@ private:
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::OccupancyGrid>>
   map_with_frontiers_pub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr goal_sucess_subscriber_;
+  std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<visualization_msgs::msg::Marker>>
+  pub_goal_marker_;
+  std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<visualization_msgs::msg::MarkerArray>>
+  clusters_pub_;
 
   // Services for action node
   rclcpp::CallbackGroup::SharedPtr nav_to_pose_callback_group_;
@@ -132,36 +211,42 @@ private:
   rclcpp::Client<nav_client_cpp::srv::NavToPose>::SharedPtr nav_to_pose_client_;
   rclcpp::Client<std_srvs::srv::Empty>::SharedPtr cancel_nav_client_;
 
+  // For simplification
+  using Cell = FrontierHelper::Cell;
+  using Coord = FrontierHelper::Coord;
+
   // Data objects
   nav_msgs::msg::OccupancyGrid map_data_;
-  std::vector<std::pair<int, int>> frontiers_;
+  std::vector<Cell> frontiers_;
+  std::vector<Cell> sampled_frontiers_;
   std::vector<double> entropies_;
-  std::pair<double, double> robot_position_;
+  std::vector<int> unknowns_;
+  Coord robot_position_;
+  Coord last_robot_position_;
+  std::optional<Coord> robot_vp_position_;
+  std::set<int> active_marker_ids_;
+  FrontierHelper::ClusterObj my_clusters_;
+  FrontierHelper::BannedAreas banned_;
 
   double viewpoint_depth_;
   bool is_sim_;
-  double radius_ = 2.5;
-  bool use_naive_ = false;
-  bool path_valid_;
-  bool use_action_client_ = true;
+  double entropy_radius_ = 2.5;
+  bool use_naive_;
+  bool use_clustering_;
+  bool eval_cluster_size_;
+  bool consider_free_edge_;
+  bool use_sampling_;
+  bool use_entropy_calc_;
+  int sampling_threshold;
+  bool use_action_client_;
   int best_frontier_idx_;
-  bool first_goal_sent_ = false;
+  double robot_radius_;
+  double EPSILON = 0.001;
 
   // Buffer objects
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_;
   rclcpp::TimerBase::SharedPtr timer_;
-
-  void activation_callback()
-  {
-    // stuff
-    auto current_state = this->get_current_state();
-
-    if (current_state.id() == lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE) {
-      RCLCPP_INFO(get_logger(), "Callback is present. Triggering activation.");
-      this->activate();
-    }
-  }
 
   void goalPubCallback(const std_msgs::msg::String::SharedPtr msg)
   {
@@ -170,12 +255,20 @@ private:
       RCLCPP_INFO(get_logger(), "Success, waiting for arrival.");
     } else if (msg->data == "Aborted") {
       RCLCPP_WARN(get_logger(), "Goal aborted... selecting next candidate.");
-      selectNextBest();
+      if (use_entropy_calc_ && static_cast<int>(frontiers_.size()) > sampling_threshold) {
+        selectNextBest(sampled_frontiers_);
+      } else {
+        selectNextBest(frontiers_);
+      }
     } else if (msg->data == "Canceled") {
       RCLCPP_WARN(get_logger(), "Goal Cancelled.");
     } else if (msg->data == "Rejected") {
       RCLCPP_WARN(get_logger(), "Goal rejected... selecting next candidate.");
-      selectNextBest();
+      if (use_entropy_calc_ && static_cast<int>(frontiers_.size()) > sampling_threshold) {
+        selectNextBest(sampled_frontiers_);
+      } else {
+        selectNextBest(frontiers_);
+      }
     } else if (msg->data == "Unknown") {
       RCLCPP_DEBUG(get_logger(), "Unknown Response");
     } else {
@@ -183,26 +276,43 @@ private:
     }
   }
 
-  void selectNextBest()
+  void selectNextBest(std::vector<Cell> & frontiers)
   {
-    if (best_frontier_idx_ >= 0 && best_frontier_idx_ < static_cast<int>(entropies_.size())) {
-      // Erase most recently selected frontier and its entropy
-      entropies_.erase(entropies_.begin() + best_frontier_idx_);
-      frontiers_.erase(frontiers_.begin() + best_frontier_idx_);
-
-      // Pick new one
-      double best_possible_entropy;
-      auto min_iterator = std::min_element(entropies_.begin(), entropies_.end());
-      best_possible_entropy = *min_iterator;
-      best_frontier_idx_ = std::distance(entropies_.begin(), min_iterator);
-
-      RCLCPP_INFO(
-        get_logger(), "Selecting frontier %d, with entropy reduction %f", best_frontier_idx_,
-        best_possible_entropy);
-
-      publishToNav2ActionClient(frontiers_.at(best_frontier_idx_));
+    if (use_clustering_) {
+      int s_largest_cluster_id = FrontierHelper::findSecondLargestCluster(my_clusters_.clusters);
+      publishToNav2ActionClient(my_clusters_.cell_centroids.at(s_largest_cluster_id));
+      RCLCPP_INFO(get_logger(), "Replanning for second largest cluster");
     } else {
-      RCLCPP_WARN(get_logger(), "Mismatch in index. Skipping reset...");
+      if (best_frontier_idx_ >= 0 && best_frontier_idx_ < static_cast<int>(entropies_.size())) {
+        RCLCPP_INFO(get_logger(), "Replanning and selecting next best goal...");
+        if (use_entropy_calc_) {
+          // Erase most recently selected frontier and its entropy
+          entropies_.erase(entropies_.begin() + best_frontier_idx_);
+          frontiers.erase(frontiers.begin() + best_frontier_idx_);
+
+          // Find and return next best entropy and index
+          auto [index, entropy] = FrontierHelper::bestEntropyIndexScore(entropies_);
+          best_frontier_idx_ = index;
+          RCLCPP_INFO(
+            get_logger(), "Selecting frontier %d, with entropy reduction %f", best_frontier_idx_,
+            entropy);
+        } else {
+          // Erase most recently selected frontier and its score
+          unknowns_.erase(unknowns_.begin() + best_frontier_idx_);
+          frontiers.erase(frontiers.begin() + best_frontier_idx_);
+
+          // Find and return next best score and index
+          auto [index, score] = FrontierHelper::bestUnknownsIndexScore(unknowns_);
+          best_frontier_idx_ = index;
+          RCLCPP_INFO(
+            get_logger(), "Selecting frontier %d, with best score %d", best_frontier_idx_,
+            score);
+        }
+
+        publishToNav2ActionClient(frontiers.at(best_frontier_idx_));
+      } else {
+        RCLCPP_WARN(get_logger(), "Mismatch in index. Skipping reset...");
+      }
     }
   }
 
@@ -211,22 +321,29 @@ private:
     map_data_ = *msg;
 
     auto current_state = this->get_current_state();
+    if (current_state.id() == lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE) {
+      // Get the robot's current viewpoint position from the transform
+      robot_vp_position_ = getRobotViewpoint();
+      if (robot_vp_position_) {
+        findFrontiers();
 
-    // Get the robot's current viewpoint position from the transform
-    auto robot_vp_position = getRobotViewpoint();
-    if (robot_vp_position &&
-      current_state.id() == lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE)
-    {
-      findFrontiers();
-      cleanupFrontiers();
-      publishGoalFrontier();
-      publishMapWithFrontiers();
+        if (use_clustering_) {
+          my_clusters_.clusters = clusterFrontiers(frontiers_, 6.0, 5);
+          publishClustersAsMarkers(my_clusters_.clusters, "/map", map_data_.info.resolution, 0.06);
+          updateClusters(); // sets cluster centroid array
+        }
+
+        publishGoalFrontier();
+        publishMapWithFrontiers();
+      } else {
+        RCLCPP_WARN(get_logger(), "Unable to determine robot's position.");
+      }
     } else {
-      RCLCPP_WARN(get_logger(), "Node inactive or unable to determine robot's position.");
+      RCLCPP_WARN(get_logger(), "Node inactive... awaiting activation");
     }
   }
 
-  std::optional<std::pair<double, double>> getRobotViewpoint()
+  std::optional<Coord> getRobotViewpoint()
   {
     std::string base_frame = is_sim_ ? "base_footprint" : "base_link";
     try {
@@ -252,7 +369,14 @@ private:
       double x_adj = x + std::cos(yaw) * viewpoint_depth_;
       double y_adj = y + std::sin(yaw) * viewpoint_depth_;
 
-      RCLCPP_INFO(get_logger(), "Got new robot position at x,y: %f, %f", x, y);
+      if (FrontierHelper::isPositionOutsideMap(map_data_, x_adj, y_adj)) {
+        x_adj = 0.0;
+        y_adj = 0.0;
+      }
+      publishViewpoint(x_adj, y_adj);
+
+      RCLCPP_DEBUG(get_logger(), "Got new robot position at x,y: %f, %f", x, y);
+      RCLCPP_DEBUG(get_logger(), "Got new viewpoint at %f, %f", x_adj, y_adj);
       return std::make_optional(std::make_pair(x_adj, y_adj));
     } catch (const tf2::TransformException & ex) {
       RCLCPP_ERROR(get_logger(), "Error getting transform: %s", ex.what());
@@ -260,8 +384,37 @@ private:
     }
   }
 
+  void publishViewpoint(double x, double y)
+  {
+    visualization_msgs::msg::Marker viewpoint;
+    viewpoint.header.frame_id = "/map";
+    viewpoint.header.stamp = get_clock()->now();
+    viewpoint.id = 0;
+    viewpoint.type = visualization_msgs::msg::Marker::CYLINDER;
+    viewpoint.action = visualization_msgs::msg::Marker::ADD;
+    viewpoint.pose.position.x = x;
+    viewpoint.pose.position.y = y;
+    viewpoint.pose.position.z = 0.01;
+    // viewpoint.pose.orientation = orientation;
+    viewpoint.scale.x = 0.05;
+    viewpoint.scale.y = 0.05;
+    viewpoint.scale.z = 0.05;
+    viewpoint.color.r = 1.0f;
+    viewpoint.color.g = 0.5f;
+    viewpoint.color.b = 0.0f;
+    viewpoint.color.a = 1.0;
+
+    pub_goal_marker_->publish(viewpoint);
+  }
+
   void findFrontiers()
   {
+    // Reset all vectors
+    frontiers_.clear();
+    sampled_frontiers_.clear();
+    entropies_.clear();
+    unknowns_.clear();
+
     // Loop through the map and find frontiers
     int height = map_data_.info.height;
     int width = map_data_.info.width;
@@ -270,7 +423,14 @@ private:
     for (int y = 0; y < height; ++y) {
       for (int x = 0; x < width; ++x) {
         int idx = y * width + x;
-        if (data[idx] == -1 && hasFreeNeighbor(x, y)) {
+        if (data[idx] == -1 &&
+          FrontierHelper::hasFreeNeighbor(map_data_, x, y) && !tooClose(std::make_pair(x, y)))
+        {
+          frontiers_.emplace_back(x, y);
+        } else if (consider_free_edge_ && FrontierHelper::explorableEdge(
+            map_data_, x,
+            y) && !tooClose(std::make_pair(x, y)))
+        {
           frontiers_.emplace_back(x, y);
         }
       }
@@ -285,43 +445,184 @@ private:
     RCLCPP_DEBUG(get_logger(), "%s", ss.str().c_str());
   }
 
-  bool hasFreeNeighbor(int x, int y)
+  void publishClustersAsMarkers(
+    const std::map<int, std::vector<Cell>> & clusters,
+    const std::string & frame_id,
+    float resolution,
+    float z_level = 0.0)
   {
-    int height = map_data_.info.height;
-    int width = map_data_.info.width;
-    const auto & data = map_data_.data;
+    // Clear old markers
+    clearOldMarkers(frame_id);
 
-    std::vector<std::pair<int, int>> neighbors = {{x - 1, y}, {x + 1, y}, {x, y - 1}, {x, y + 1}};
-    for (const auto & [nx, ny] : neighbors) {
-      if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-        int idx = ny * width + nx;
-        if (data[idx] == 0) {       // Free cell
-          return true;
-        }
+    // Iterate through clusters and create markers
+    visualization_msgs::msg::MarkerArray marker_array;
+    for (const auto & [cluster_id, points] : clusters) {
+      // Create POINTS marker for the cluster
+      visualization_msgs::msg::Marker points_marker;
+      points_marker.header.frame_id = frame_id;
+      points_marker.header.stamp = rclcpp::Clock().now();
+      points_marker.ns = "cluster_points";
+      points_marker.id = cluster_id;  // Unique ID per cluster
+      points_marker.type = visualization_msgs::msg::Marker::POINTS;
+      points_marker.action = visualization_msgs::msg::Marker::ADD;
+      points_marker.scale.x = resolution;  // Size of points
+      points_marker.scale.y = resolution;
+
+      // Randomly generate a unique color for each cluster
+      points_marker.color.r = static_cast<float>(std::rand() % 255) / 255.0;
+      points_marker.color.g = static_cast<float>(std::rand() % 255) / 255.0;
+      points_marker.color.b = static_cast<float>(std::rand() % 255) / 255.0;
+      points_marker.color.a = 1.0;  // Fully opaque
+
+      // Add all points in the cluster and create a centroid
+      geometry_msgs::msg::Point centroid;
+      centroid.x = 0.0;
+      centroid.y = 0.0;
+      centroid.z = z_level;
+
+      for (const auto & point : points) {
+        auto [world_x, world_y] = FrontierHelper::cellToWorld(point, map_data_);
+        geometry_msgs::msg::Point p;
+        p.x = world_x;
+        p.y = world_y;
+        p.z = z_level;      // Optional z-level (e.g., ground plane)
+        points_marker.points.push_back(p);
+
+        // Accumulate centroid
+        centroid.x += world_x;
+        centroid.y += world_y;
       }
+
+      // Finalize centroid by averaging
+      centroid.x /= points.size();
+      centroid.y /= points.size();
+
+      // Add the cluster centroids to the vector for later use
+      my_clusters_.world_centroids.emplace_back(centroid.x, centroid.y);
+
+      marker_array.markers.push_back(points_marker);
+
+      // Create TEXT_VIEW_FACING marker for the cluster ID
+      visualization_msgs::msg::Marker text_marker;
+      text_marker.header.frame_id = frame_id;
+      text_marker.header.stamp = rclcpp::Clock().now();
+      text_marker.ns = "cluster_label";
+      text_marker.id = cluster_id + clusters.size(); // Ensure unique ID
+      text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+      text_marker.action = visualization_msgs::msg::Marker::ADD;
+      text_marker.scale.z = resolution * 3.0;  // Text size
+      text_marker.color.r = 1.0;
+      text_marker.color.g = 1.0;
+      text_marker.color.b = 1.0;
+      text_marker.color.a = 1.0;  // Fully opaque
+      text_marker.pose.position = centroid;
+      text_marker.pose.position.z += z_level + 0.1; // Slightly above points
+      text_marker.text = std::to_string(cluster_id);
+
+      marker_array.markers.push_back(text_marker);
+
+      // Track the marker ID
+      active_marker_ids_.insert(cluster_id);
     }
-    return false;
+
+    RCLCPP_INFO(
+      get_logger(), "Publishing MarkerArray with %ld markers",
+      marker_array.markers.size());
+    // Publish the marker array
+    clusters_pub_->publish(marker_array);
   }
 
-  void cleanupFrontiers()
+  void clearOldMarkers(const std::string & frame_id)
   {
-    std::vector<std::pair<int, int>> valid_frontiers;
-    const auto & data = map_data_.data;
+    my_clusters_.world_centroids.clear(); // clear out old centroids
+    visualization_msgs::msg::MarkerArray clear_array;
 
-    for (const auto & frontier : frontiers_) {
-      int idx = frontier.second * map_data_.info.width + frontier.first;
-      if (data[idx] == -1 &&
-        hasFreeNeighbor(frontier.first, frontier.second) && !tooClose(frontier))
-      {
-        valid_frontiers.push_back(frontier);
-      }
+    // Iterate over the list of previously published markers
+    for (int id : active_marker_ids_) {
+      // delete point markers
+      visualization_msgs::msg::Marker marker_points;
+      marker_points.header.frame_id = frame_id;
+      marker_points.header.stamp = rclcpp::Clock().now();
+      marker_points.ns = "cluster_points";    // Namespace for the markers
+      marker_points.id = id;                  // Use the active marker ID
+      marker_points.action = visualization_msgs::msg::Marker::DELETE;    // Set action to DELETE
+      clear_array.markers.push_back(marker_points);
+
+      // delete text markers
+      visualization_msgs::msg::Marker marker_text;
+      marker_text.header.frame_id = frame_id;
+      marker_text.header.stamp = rclcpp::Clock().now();
+      marker_text.ns = "cluster_label";    // Namespace for the markers
+      marker_text.id = id + active_marker_ids_.size();                  // Use the active marker ID
+      marker_text.action = visualization_msgs::msg::Marker::DELETE;    // Set action to DELETE
+      clear_array.markers.push_back(marker_text);
     }
-    frontiers_ = valid_frontiers;
+
+    // Publish the deletion markers
+    clusters_pub_->publish(clear_array);
+
+    // Clear the active_marker_ids_ list to reset tracking
+    active_marker_ids_.clear();
   }
 
-  bool tooClose(const std::pair<int, int> & frontier)
+  std::map<int, std::vector<Cell>> clusterFrontiers(
+    const std::vector<Cell> & frontiers, float eps,
+    int min_samples)
   {
-    return distanceToRobot(frontier) <= 0.25;
+    cv::Mat points;
+    for (const auto & f : frontiers) {
+      points.push_back(cv::Vec2f(f.first, f.second));
+    }
+
+    auto labels = FrontierHelper::performDBSCAN(points, eps, min_samples);
+
+    // Organize clusters
+    std::map<int, std::vector<Cell>> clusters;
+    for (size_t i = 0; i < frontiers.size(); ++i) {
+      int label = labels.at(i);
+      if (label >= 0) {      // Ignore noise
+        clusters[label].emplace_back(frontiers.at(i));
+      }
+    }
+
+    // Filter out small clusters
+    auto filtered_clusters = filterClusters(clusters, min_samples);
+
+    // Merge adjacent clusters
+    filtered_clusters = FrontierHelper::mergeAdjacentClusters(filtered_clusters);
+
+    RCLCPP_INFO(get_logger(), "Number of frontiers: %ld", frontiers.size());
+    // Print cluster information
+    for (const auto & [id, cluster] : filtered_clusters) {
+      std::cout << "Cluster " << id << " has " << cluster.size() << " points\n";
+    }
+
+    RCLCPP_INFO(get_logger(), "Number of clusters: %ld", filtered_clusters.size());
+    return filtered_clusters;
+  }
+
+  std::map<int, std::vector<Cell>> filterClusters(
+    const std::map<int, std::vector<Cell>> & clusters,
+    int min_samples)
+  {
+    std::map<int, std::vector<Cell>> filtered_clusters;
+    for (const auto & [id, cluster] : clusters) {
+      if (static_cast<int>(cluster.size()) >= min_samples) {
+        filtered_clusters[id] = cluster;
+      }
+    }
+    return filtered_clusters;
+  }
+
+  bool tooClose(const Cell & frontier)
+  {
+    return distanceToRobot(frontier) <= robot_radius_;
+  }
+
+  bool stuck() const
+  {
+    return std::abs(last_robot_position_.first - robot_position_.first) < EPSILON &&
+           std::abs(last_robot_position_.second - robot_position_.second) < EPSILON;
   }
 
   void publishGoalFrontier()
@@ -329,46 +630,101 @@ private:
     if (frontiers_.empty()) {
       RCLCPP_INFO(get_logger(), "No frontiers available.");
       return;
-    }
-
-    std::pair<int, int> goal_frontier;
-    if (use_naive_ == true) {
-      goal_frontier = *std::min_element(
-        frontiers_.begin(), frontiers_.end(), [this](const auto & f1, const auto & f2)
-        {
-          return distanceToRobot(f1) < distanceToRobot(f2);
-        });
-    } else {
-      goal_frontier = bestScoreFrontier();
-    }
+    } else if (use_clustering_ && my_clusters_.cell_centroids.size() < 1) {
+      RCLCPP_INFO(get_logger(), "No valid clusters available.");
+      return;
+    } // Exits if there aren't any goals to visit
 
     if (!use_action_client_) {
-      publishToNav2PlannerServer(goal_frontier);
+      publishToNav2PlannerServer(selectGoal());
     } else {
-      publishToNav2ActionClient(goal_frontier);
-      first_goal_sent_ = true;
+      publishToNav2ActionClient(selectGoal());
     }
   }
 
-  void publishToNav2ActionClient(const std::pair<int, int> & goal_frontier)
+  Cell selectGoal()
   {
-    // if (first_goal_sent_) {
-    //   auto cancel_future = cancel_nav_client_->async_send_request(
-    //     std::make_shared<std_srvs::srv::Empty::Request>());
-    // }
+    Cell goal_frontier; // Define goal frontier
+    if (use_naive_) {
+      goal_frontier = selectNaiveGoal();
+    } else if (use_clustering_) {
+      goal_frontier = selectClusterGoal();
+    } else if (use_sampling_ && static_cast<int>(frontiers_.size()) > sampling_threshold) {
+      goal_frontier = selectSampledGoal();
+    } else {
+      goal_frontier = bestScoringFrontier(frontiers_);
+    }
+
+    last_robot_position_ = robot_position_;
+    return goal_frontier;
+  }
+
+  // Helper function to update clusters
+  void updateClusters()
+  {
+    my_clusters_.cell_centroids = FrontierHelper::getCentroidCells(
+      map_data_, my_clusters_.world_centroids);
+    RCLCPP_INFO(
+      get_logger(),
+      "Number of clusters: %ld\nNumber of centroids: %ld",
+      my_clusters_.clusters.size(), my_clusters_.cell_centroids.size());
+  }
+
+  // Helper function to handle naive goal selection
+  Cell selectNaiveGoal()
+  {
+    if (use_clustering_) {
+      return selectByDistance(my_clusters_.cell_centroids);
+    } else if (use_sampling_ && static_cast<int>(frontiers_.size()) > sampling_threshold) {
+      return selectByDistance(
+        FrontierHelper::sampleRandomFrontiers(
+          frontiers_,
+          sampling_threshold));
+    }
+    return selectByDistance(frontiers_);
+  }
+
+  // Helper function to handle clustered goal selection
+  Cell selectClusterGoal()
+  {
+    if (eval_cluster_size_) {
+      int largest_cluster_id = FrontierHelper::findLargestCluster(my_clusters_, banned_, map_data_);
+      RCLCPP_INFO(get_logger(), "selecting cluster %d with size: %ld", largest_cluster_id, my_clusters_.clusters.size());
+      return replanIfStuck(my_clusters_.cell_centroids.at(largest_cluster_id));
+    }
+    Cell goal_frontier = bestScoringFrontier(my_clusters_.cell_centroids);
+    RCLCPP_INFO(
+      get_logger(),
+      "last_robot_position: %f, %f \nCurrent Robot Position: %f, %f",
+      last_robot_position_.first, last_robot_position_.second,
+      robot_position_.first, robot_position_.second);
+    return replanIfStuck(goal_frontier);
+  }
+
+  // Helper function to handle sampled goal selection
+  Cell selectSampledGoal()
+  {
+    sampled_frontiers_ = FrontierHelper::sampleRandomFrontiers(frontiers_, sampling_threshold);
+    RCLCPP_DEBUG(get_logger(), "Using sampling to get best frontier");
+    return bestScoringFrontier(sampled_frontiers_);
+  }
+
+  void publishToNav2ActionClient(const Cell & goal_frontier)
+  {
     auto goal_pose = std::make_shared<nav_client_cpp::srv::NavToPose::Request>();
-    std::tie(goal_pose->x, goal_pose->y) = cellToWorld(goal_frontier);
+    std::tie(goal_pose->x, goal_pose->y) = FrontierHelper::cellToWorld(goal_frontier, map_data_);
     goal_pose->theta = 0.0;
     RCLCPP_INFO(
       get_logger(), "Publishing goal at %f, %f", goal_pose->x, goal_pose->y);
     auto future_result = nav_to_pose_client_->async_send_request(goal_pose);
   }
 
-  void publishToNav2PlannerServer(const std::pair<int, int> & goal_frontier)
+  void publishToNav2PlannerServer(const Cell & goal_frontier)
   {
     geometry_msgs::msg::PoseStamped goal_pose;
     goal_pose.header.frame_id = "map";
-    std::tie(goal_pose.pose.position.x, goal_pose.pose.position.y) = cellToWorld(goal_frontier);
+    std::tie(goal_pose.pose.position.x, goal_pose.pose.position.y) = FrontierHelper::cellToWorld(
+      goal_frontier, map_data_);
     goal_pose.pose.position.z = 0.0;
     goal_pose.pose.orientation.w = 1.0;
 
@@ -384,156 +740,101 @@ private:
 
     for (const auto & frontier : frontiers_) {
       int idx = frontier.second * modified_map.info.width + frontier.first;
-      modified_map.data[idx] = 50;       // Mark frontiers in the map
+      modified_map.data.at(idx) = 50;       // Mark frontiers in the map
     }
 
     map_with_frontiers_pub_->publish(modified_map);
-    RCLCPP_INFO(get_logger(), "Published map with highlighted frontiers.");
+    RCLCPP_DEBUG(get_logger(), "Published map with highlighted frontiers.");
   }
 
-  double distanceToRobot(const std::pair<int, int> & frontier)
+  Cell replanIfStuck(Cell & curr_goal)
   {
-    auto [fx, fy] = cellToWorld(frontier);
+    if (stuck()) {
+      Cell goal_frontier =
+        my_clusters_.cell_centroids.at(
+        FrontierHelper::findSecondLargestCluster(
+          my_clusters_.
+          clusters));
+      RCLCPP_INFO(get_logger(), "Going to second largest cluster because robot hasn't moved");
+      return goal_frontier;
+    } else {
+      return curr_goal;
+    }
+  }
+
+  double distanceToRobot(const Cell & frontier)
+  {
+    auto [fx, fy] = FrontierHelper::cellToWorld(frontier, map_data_);
     auto [rx, ry] = robot_position_;
     return std::hypot(fx - rx, fy - ry);
   }
 
-  std::pair<double, double> cellToWorld(const std::pair<int, int> & cell)
+  double distanceToRobotVP(const Cell & frontier)
   {
-    double world_x = map_data_.info.origin.position.x + (cell.first * map_data_.info.resolution);
-    double world_y = map_data_.info.origin.position.y + (cell.second * map_data_.info.resolution);
-    return {world_x, world_y};
-  }
-
-  int countUnknownCellsWithinRadius(int index, double rad)
-  {
-    int unknown_count = 0;
-
-    // Get map metadata
-    int width = static_cast<int>(map_data_.info.width);
-    int height = static_cast<int>(map_data_.info.height);
-    double resolution = map_data_.info.resolution;
-
-    // Calculate the center cell's row and column from the index
-    int center_row = index / width;
-    int center_col = index % width;
-
-    // Determine the search range in cells based on the radius
-    int range = static_cast<int>(std::round(rad / resolution));
-
-    // Loop through the square neighborhood around the center cell
-    for (int row = center_row - range; row <= center_row + range; ++row) {
-      for (int col = center_col - range; col <= center_col + range; ++col) {
-        // Skip cells outside the grid boundaries
-        if (row < 0 || row >= height || col < 0 || col >= width) {
-          continue;
-        }
-
-        // Compute the Euclidean distance from the center cell
-        double dist =
-          std::sqrt(std::pow(row - center_row, 2) + std::pow(col - center_col, 2)) * resolution;
-
-        // Only consider cells within the specified radius
-        if (dist <= rad) {
-          // Calculate the index of the current cell in the OccupancyGrid data
-          int cell_index = row * width + col;
-
-          // Check if the cell is unknown (-1)
-          if (map_data_.data[cell_index] == -1 &&
-            !occluded(col, row, center_col, center_row, width, map_data_.data))
-          {
-            unknown_count++;
-          }
-        }
-      }
+    auto [fx, fy] = FrontierHelper::cellToWorld(frontier, map_data_);
+    double rx = 0.0, ry = 0.0; // Initialize rx and ry
+    if (robot_vp_position_) { // Assign values if robot_vp_position_ is set
+      std::tie(rx, ry) = *robot_vp_position_;   // Dereferencing pointer :O
     }
-
-    return unknown_count;
+    return std::hypot(fx - rx, fy - ry);
   }
 
-  std::pair<int, int> bestScoreFrontier()
+  Cell selectByDistance(const std::vector<Cell> & candidates)
   {
-    double total_entropy = calculateMapEntropy();
-    RCLCPP_INFO(get_logger(), "Total Map Entropy %f", total_entropy);
-    // Reset list of entropies
-    entropies_.clear();
+    auto goal_frontier = *std::min_element(
+      candidates.begin(), candidates.end(), [this](const auto & f1, const auto & f2)
+      {
+        return distanceToRobotVP(f1) < distanceToRobotVP(f2);
+      });
+    return goal_frontier;
+  }
+
+  Cell bestScoringFrontier(const std::vector<Cell> & frontiers)
+  {
+    double total_entropy;
+    // Establish baseline and reset for preferred scoring approach
+    if (use_entropy_calc_) {
+      total_entropy = FrontierHelper::calculateMapEntropy(map_data_.data);
+      RCLCPP_INFO(get_logger(), "Total Map Entropy %f", total_entropy);
+    }
 
     // Loop through all frontiers and get score
-    for (size_t i = 0; i < frontiers_.size(); ++i) {
-      const auto & frontier = frontiers_.at(i);
+    for (size_t i = 0; i < frontiers.size(); ++i) {
+      const auto & frontier = frontiers.at(i);
       int idx = frontier.second * map_data_.info.width + frontier.first;
-      int unknowns = countUnknownCellsWithinRadius(idx, radius_);
-
-      // calculate current reduced entropy and place in list
-      entropies_.emplace_back(
-        total_entropy - (unknowns * calculateEntropy(-1)) +
-        (unknowns * calculateEntropy(0)));
-    }
-
-    // Select least entropy from list and find index
-    double best_possible_entropy;
-    auto min_iterator = std::min_element(entropies_.begin(), entropies_.end());
-    best_possible_entropy = *min_iterator;
-    best_frontier_idx_ = std::distance(entropies_.begin(), min_iterator);
-
-    RCLCPP_INFO(
-      get_logger(), "Selecting frontier %d, with entropy reduction %f", best_frontier_idx_,
-      best_possible_entropy);
-    return frontiers_.at(best_frontier_idx_);
-  }
-
-  double calculateMapEntropy()
-  {
-    double entropy;
-    for (const auto & cell : map_data_.data) {
-      entropy += calculateEntropy(cell);
-    }
-    return entropy;
-  }
-
-  double calculateEntropy(int cell_value)
-  {
-    double v;
-    if (cell_value == -1) {
-      v = 0.5;
-    } else if (cell_value == 0) {
-      v = 0.01;
-    } else if (cell_value == 100) {
-      v = 0.99;
-    }
-    return -1 * ((v * log(v)) + ((1 - v) * log(1 - v)));
-  }
-
-  bool occluded(int x1, int y1, int x2, int y2, int width, const std::vector<int8_t> & map_data)
-  {
-    // Bresenham's line algorithm to generate points between (x1, y1) and (x2, y2)
-    int dx = abs(x2 - x1);
-    int dy = abs(y2 - y1);
-    int sx = (x1 < x2) ? 1 : -1;
-    int sy = (y1 < y2) ? 1 : -1;
-    int err = dx - dy;
-
-    while (x1 != x2 || y1 != y2) {
-      // Check if the current cell is occupied (value 100 means occupied)
-      int cell_index = y1 * width + x1;
-      if (map_data[cell_index] == 100) {
-        return true;  // There is an occupied cell between the two points
+      int unknowns = FrontierHelper::countUnknownCellsWithinRadius(map_data_, idx, entropy_radius_);
+      if (FrontierHelper::identifyBanned(frontiers.at(i), banned_, map_data_)) {
+        unknowns = 0;
       }
 
-      int e2 = 2 * err;
-      if (e2 > -dy) {
-        err -= dy;
-        x1 += sx;
-      }
-      if (e2 < dx) {
-        err += dx;
-        y1 += sy;
+      if (use_entropy_calc_) {
+        // calculate current reduced entropy and place in list
+        entropies_.emplace_back(
+          total_entropy - (unknowns * FrontierHelper::calculateEntropy(-1)) +
+          (unknowns * FrontierHelper::calculateEntropy(0)));
+      } else {
+        unknowns_.emplace_back(unknowns);
       }
     }
 
-    return false;  // No occupied cells found between the two points
-  }
+    if (use_entropy_calc_) {
+      // Find and return best entropy and index
+      auto [index, entropy] = FrontierHelper::bestEntropyIndexScore(entropies_);
+      best_frontier_idx_ = index;
+      RCLCPP_INFO(
+        get_logger(), "Selecting frontier %d, with entropy reduction %f", best_frontier_idx_,
+        entropy);
+    } else {
+      // Find and return best score and index
+      auto [index, score] = FrontierHelper::bestUnknownsIndexScore(unknowns_);
+      best_frontier_idx_ = index;
+      RCLCPP_INFO(
+        get_logger(), "Selecting frontier %d, with best score %d", best_frontier_idx_,
+        score);
+    }
 
+    return frontiers.at(best_frontier_idx_);
+  }
 };
 
 // #include "rclcpp_components/register_node_macro.hpp"

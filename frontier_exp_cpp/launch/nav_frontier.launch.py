@@ -15,13 +15,6 @@ def generate_launch_description():
         description='Use simulation (true) or real robot time (false)'
     )
 
-    # Declare a launch argument for viewpoint_depth
-    viewpoint_depth_arg = DeclareLaunchArgument(
-        'viewpoint_depth',
-        default_value='1.0',  # Default value
-        description='Minimize frontier distance to X[m] in front of robot'
-    )
-
     # Get the path to the nav2_bringup package
     nav2_bringup_dir = get_package_share_directory('nav2_bringup')
 
@@ -31,6 +24,11 @@ def generate_launch_description():
         package_share_dir, 'config', 'nav2_params_robot.yaml')
     nav2_params_file_sim = os.path.join(
         package_share_dir, 'config', 'nav2_params_sim.yaml')
+    frontier_params_file = os.path.join(
+        get_package_share_directory('frontier_exp_cpp'),
+        'config',
+        'frontier_params.yaml'
+    )
 
     # Function to conditionally include the params file if use_sim_time is false
     def include_nav2_with_params(context):
@@ -64,7 +62,7 @@ def generate_launch_description():
         name='frontier_explorer',
         output='screen',
         parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')},
-                    {'viewpoint_depth': LaunchConfiguration('viewpoint_depth')}],
+                    frontier_params_file],
         namespace=''
     )
 
@@ -72,12 +70,12 @@ def generate_launch_description():
         package='nav_client_cpp',
         executable='nav_node',
         name='nav_to_pose',
-        output='screen')
+        output='screen',
+        parameters=[frontier_params_file])
 
     return LaunchDescription([
         # Declare sim_time and viewpoint depth arguments
         use_sim_time_arg,
-        viewpoint_depth_arg,
 
         # Conditionally launch Nav2 with or without params file
         OpaqueFunction(function=include_nav2_with_params),
