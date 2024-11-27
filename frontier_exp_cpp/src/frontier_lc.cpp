@@ -15,6 +15,7 @@
 #include "lifecycle_msgs/msg/state.hpp"
 #include <lifecycle_msgs/srv/get_state.hpp>
 #include "frontier_exp_cpp/frontier_helper.hpp"
+#include "frontier_exp_cpp/dbscan.hpp"
 #include <optional>
 #include <cstdlib> // For generating random colors
 
@@ -574,7 +575,7 @@ private:
       points.push_back(cv::Vec2f(f.first, f.second));
     }
 
-    auto labels = FrontierHelper::performDBSCAN(points, eps, min_samples);
+    auto labels = DBSCAN::performDBSCAN(points, eps, min_samples);
 
     // Organize clusters
     std::map<int, std::vector<Cell>> clusters;
@@ -589,7 +590,7 @@ private:
     auto filtered_clusters = filterClusters(clusters, min_samples);
 
     // Merge adjacent clusters
-    filtered_clusters = FrontierHelper::mergeAdjacentClusters(filtered_clusters);
+    filtered_clusters = DBSCAN::mergeAdjacentClusters(filtered_clusters);
 
     RCLCPP_INFO(get_logger(), "Number of frontiers: %ld", frontiers.size());
     // Print cluster information

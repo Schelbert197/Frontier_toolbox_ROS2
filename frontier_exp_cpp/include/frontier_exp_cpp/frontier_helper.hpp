@@ -40,6 +40,14 @@ public:
     std::vector<Coord> coords;
   };
 
+  /// @brief Finds all "frontiers" in an OccupancyGrid map.
+  /// @param map_data 
+  /// @param consider_free_edge 
+  /// @return A vector of std::pair<int, int> grid cells of frontiers. 
+  static std::vector<Cell> findFrontiers(
+    const nav_msgs::msg::OccupancyGrid & map_data,
+    bool consider_free_edge);
+
   /// @brief Stage a new area to be banned, or add to an existing area within radius
   /// @param cell Location to be evaluated for banishment staging.
   /// @param staged Hashmap of the existing places staged for banishment.
@@ -117,22 +125,22 @@ public:
     int index,
     double rad);
 
-  /// @brief Performs DBSCAN clustering on a set of points.
-  /// @param points A matrix of points (each row represents a point).
-  /// @param eps The maximum distance between points to be considered neighbors.
-  /// @param min_samples The minimum number of points to form a dense region (cluster).
-  /// @return A vector of labels where each element corresponds to the cluster ID of a point.
-  ///         Points labeled as -1 are considered noise.
-  static std::vector<int> performDBSCAN(
-    const cv::Mat & points,
-    double eps,
-    int min_samples);
+  // /// @brief Performs DBSCAN clustering on a set of points.
+  // /// @param points A matrix of points (each row represents a point).
+  // /// @param eps The maximum distance between points to be considered neighbors.
+  // /// @param min_samples The minimum number of points to form a dense region (cluster).
+  // /// @return A vector of labels where each element corresponds to the cluster ID of a point.
+  // ///         Points labeled as -1 are considered noise.
+  // static std::vector<int> performDBSCAN(
+  //   const cv::Mat & points,
+  //   double eps,
+  //   int min_samples);
 
-  /// @brief Merges adjacent clusters in a map of clusters.
-  /// @param clusters A map of cluster IDs to vectors of (x, y) cell coordinates.
-  /// @return A new map with adjacent clusters merged.
-  static std::map<int, std::vector<Cell>> mergeAdjacentClusters(
-    const std::map<int, std::vector<Cell>> & clusters);
+  // /// @brief Merges adjacent clusters in a map of clusters.
+  // /// @param clusters A map of cluster IDs to vectors of (x, y) cell coordinates.
+  // /// @return A new map with adjacent clusters merged.
+  // static std::map<int, std::vector<Cell>> mergeAdjacentClusters(
+  //   const std::map<int, std::vector<Cell>> & clusters);
 
   /// @brief Selects the least entropy from a list and returns its index and value.
   /// @param entropies A vector containing entropy values.

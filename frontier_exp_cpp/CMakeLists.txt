@@ -32,6 +32,18 @@ ament_target_dependencies(frontier_helper
   geometry_msgs
   OpenCV)
 
+# Create library for DBSCAN
+add_library(dbscan src/dbscan.cpp)
+target_include_directories(dbscan PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include/frontier_exp_cpp>)
+target_compile_features(dbscan PUBLIC c_std_99 cxx_std_17)
+ament_target_dependencies(dbscan 
+  rclcpp 
+  nav_msgs 
+  geometry_msgs
+  OpenCV)
+
 add_executable(frontier_lc src/frontier_lc.cpp)
 ament_target_dependencies(frontier_lc 
 rclcpp 
@@ -49,6 +61,7 @@ nav_client_cpp)
 
 # Link helper library to frontier_lc
 target_link_libraries(frontier_lc frontier_helper)
+target_link_libraries(frontier_lc dbscan)
 
 target_include_directories(frontier_lc PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -56,6 +69,8 @@ target_include_directories(frontier_lc PUBLIC
 target_compile_features(frontier_lc PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 
 install(TARGETS frontier_helper frontier_lc
+  DESTINATION lib/${PROJECT_NAME})
+install(TARGETS dbscan frontier_lc
   DESTINATION lib/${PROJECT_NAME})
 
 # Install include files

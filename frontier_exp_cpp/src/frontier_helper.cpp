@@ -3,6 +3,45 @@
 #include <algorithm> // Required for std::shuffle in implementation
 #include <numeric> // Required for std::iota in implementation
 #include <set>
+#include <rclcpp/rclcpp.hpp> // For logger statements
+
+  void findFrontiers(
+    const nav_msgs::msg::OccupancyGrid & map_data,
+    bool consider_free_edge)
+  {
+    std::vector<FrontierHelper::Cell> frontiers;
+
+    // Loop through the map and find frontiers
+    int height = map_data.info.height;
+    int width = map_data.info.width;
+    const auto & data = map_data.data;
+
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        int idx = y * width + x;
+        if (data[idx] == -1 &&
+          FrontierHelper::hasFreeNeighbor(map_data, x, y) && !tooClose(std::make_pair(x, y)))
+        {
+          frontiers.emplace_back(x, y);
+        } else if (consider_free_edge && FrontierHelper::explorableEdge(
+            map_data, x,
+            y) && !tooClose(std::make_pair(x, y)))
+        {
+          frontiers.emplace_back(x, y);
+        }
+      }
+    }
+    // // Convert the vector to a string
+    // std::stringstream ss;
+    // ss << "Vector contents: ";
+    // for (const auto & pair : frontiers) {
+    //   ss << "(" << pair.first << ", " << pair.second << ") ";
+    // }
+    // // Print the vector contents of the frontier vector
+    // RCLCPP_DEBUG(get_logger(), "%s", ss.str().c_str());
+    
+    return frontiers;
+  }
 
 std::map<FrontierHelper::Coord, int> FrontierHelper::stageBanned(
   const Cell & cell, std::map<Coord, int> & staged,
@@ -213,136 +252,136 @@ int FrontierHelper::countUnknownCellsWithinRadius(
   return unknown_count;
 }
 
-std::vector<int> FrontierHelper::performDBSCAN(
-  const cv::Mat & points,
-  double eps,
-  int min_samples)
-{
-  std::vector<int> labels(points.rows, -1);    // Initialize labels to -1 (noise)
-  int cluster_id = 0;
+// std::vector<int> FrontierHelper::performDBSCAN(
+//   const cv::Mat & points,
+//   double eps,
+//   int min_samples)
+// {
+//   std::vector<int> labels(points.rows, -1);    // Initialize labels to -1 (noise)
+//   int cluster_id = 0;
 
-  // Helper to calculate neighbors
-  auto find_neighbors = [&](int idx) {
-      std::vector<int> neighbors;
-      for (int i = 0; i < points.rows; ++i) {
-        if (cv::norm(points.row(idx) - points.row(i)) <= eps) {
-          neighbors.push_back(i);
-        }
-      }
-      return neighbors;
-    };
+//   // Helper to calculate neighbors
+//   auto find_neighbors = [&](int idx) {
+//       std::vector<int> neighbors;
+//       for (int i = 0; i < points.rows; ++i) {
+//         if (cv::norm(points.row(idx) - points.row(i)) <= eps) {
+//           neighbors.push_back(i);
+//         }
+//       }
+//       return neighbors;
+//     };
 
-  // Core DBSCAN logic
-  for (int i = 0; i < points.rows; ++i) {
-    if (labels.at(i) != -1) {
-      continue;                 // Skip already labeled points
-    }
-    auto neighbors = find_neighbors(i);
-    if (static_cast<int>(neighbors.size()) < min_samples) {
-      labels.at(i) = -1;        // Mark as noise
-      continue;
-    }
+//   // Core DBSCAN logic
+//   for (int i = 0; i < points.rows; ++i) {
+//     if (labels.at(i) != -1) {
+//       continue;                 // Skip already labeled points
+//     }
+//     auto neighbors = find_neighbors(i);
+//     if (static_cast<int>(neighbors.size()) < min_samples) {
+//       labels.at(i) = -1;        // Mark as noise
+//       continue;
+//     }
 
-    // Start a new cluster
-    labels.at(i) = cluster_id;
-    std::vector<int> to_expand = neighbors;
+//     // Start a new cluster
+//     labels.at(i) = cluster_id;
+//     std::vector<int> to_expand = neighbors;
 
-    while (!to_expand.empty()) {
-      int pt = to_expand.back();
-      to_expand.pop_back();
+//     while (!to_expand.empty()) {
+//       int pt = to_expand.back();
+//       to_expand.pop_back();
 
-      if (labels[pt] == -1) {
-        labels[pt] = cluster_id;  // Change noise to border point
-      }
+//       if (labels[pt] == -1) {
+//         labels[pt] = cluster_id;  // Change noise to border point
+//       }
 
-      if (labels[pt] != -1) {
-        continue;                // Skip if already processed
-      }
+//       if (labels[pt] != -1) {
+//         continue;                // Skip if already processed
+//       }
 
-      // Check if the point is a valid core point
-      auto new_neighbors = find_neighbors(pt);
-      if (static_cast<int>(new_neighbors.size()) >= min_samples) {
-        to_expand.insert(to_expand.end(), new_neighbors.begin(), new_neighbors.end());
-      }
+//       // Check if the point is a valid core point
+//       auto new_neighbors = find_neighbors(pt);
+//       if (static_cast<int>(new_neighbors.size()) >= min_samples) {
+//         to_expand.insert(to_expand.end(), new_neighbors.begin(), new_neighbors.end());
+//       }
 
-      // Assign to cluster even if it's a border point (but not a new core point)
-      labels[pt] = cluster_id;
-    }
+//       // Assign to cluster even if it's a border point (but not a new core point)
+//       labels[pt] = cluster_id;
+//     }
 
-    cluster_id++;
-  }
+//     cluster_id++;
+//   }
 
-  return labels;
-}
+//   return labels;
+// }
 
-std::map<int, std::vector<FrontierHelper::Cell>> FrontierHelper::mergeAdjacentClusters(
-  const std::map<int, std::vector<FrontierHelper::Cell>> & clusters)
-{
-  // Step 1: Create a map of cluster IDs to sets of cell coordinates
-  std::map<int, std::set<Cell>> cluster_cells;
-  for (const auto &[cluster_id, cells] : clusters) {
-    cluster_cells[cluster_id] = std::set<Cell>(cells.begin(), cells.end());
-  }
+// std::map<int, std::vector<FrontierHelper::Cell>> FrontierHelper::mergeAdjacentClusters(
+//   const std::map<int, std::vector<FrontierHelper::Cell>> & clusters)
+// {
+//   // Step 1: Create a map of cluster IDs to sets of cell coordinates
+//   std::map<int, std::set<Cell>> cluster_cells;
+//   for (const auto &[cluster_id, cells] : clusters) {
+//     cluster_cells[cluster_id] = std::set<Cell>(cells.begin(), cells.end());
+//   }
 
-  // Step 2: Track cluster merging using a union-find structure
-  std::map<int, int> parent;   // Maps each cluster ID to its representative (parent)
-  for (const auto &[cluster_id, _] : clusters) {
-    parent[cluster_id] = cluster_id;     // Initially, each cluster is its own parent
-  }
+//   // Step 2: Track cluster merging using a union-find structure
+//   std::map<int, int> parent;   // Maps each cluster ID to its representative (parent)
+//   for (const auto &[cluster_id, _] : clusters) {
+//     parent[cluster_id] = cluster_id;     // Initially, each cluster is its own parent
+//   }
 
-  // Helper to find the root of a cluster
-  auto find = [&](int x) {
-      while (x != parent[x]) {
-        parent[x] = parent[parent[x]];     // Path compression
-        x = parent[x];
-      }
-      return x;
-    };
+//   // Helper to find the root of a cluster
+//   auto find = [&](int x) {
+//       while (x != parent[x]) {
+//         parent[x] = parent[parent[x]];     // Path compression
+//         x = parent[x];
+//       }
+//       return x;
+//     };
 
-  // Helper to union two clusters
-  auto unite = [&](int x, int y) {
-      int root_x = find(x);
-      int root_y = find(y);
-      if (root_x != root_y) {
-        parent[root_y] = root_x;     // Merge y into x
-      }
-    };
+//   // Helper to union two clusters
+//   auto unite = [&](int x, int y) {
+//       int root_x = find(x);
+//       int root_y = find(y);
+//       if (root_x != root_y) {
+//         parent[root_y] = root_x;     // Merge y into x
+//       }
+//     };
 
-  // Step 3: Check adjacency and merge clusters
-  std::vector<Cell> offsets = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
-  for (const auto &[id1, cells1] : cluster_cells) {
-    for (const auto &[id2, cells2] : cluster_cells) {
-      if (id1 >= id2) {
-        continue;                     // Avoid duplicate checks
-      }
-      for (const auto & cell : cells1) {
-        for (const auto & offset : offsets) {
-          Cell neighbor = {cell.first + offset.first, cell.second + offset.second};
-          if (cells2.find(neighbor) != cells2.end()) {
-            unite(id1, id2);
-            break;
-          }
-        }
-      }
-    }
-  }
+//   // Step 3: Check adjacency and merge clusters
+//   std::vector<Cell> offsets = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+//   for (const auto &[id1, cells1] : cluster_cells) {
+//     for (const auto &[id2, cells2] : cluster_cells) {
+//       if (id1 >= id2) {
+//         continue;                     // Avoid duplicate checks
+//       }
+//       for (const auto & cell : cells1) {
+//         for (const auto & offset : offsets) {
+//           Cell neighbor = {cell.first + offset.first, cell.second + offset.second};
+//           if (cells2.find(neighbor) != cells2.end()) {
+//             unite(id1, id2);
+//             break;
+//           }
+//         }
+//       }
+//     }
+//   }
 
-  // Step 4: Collect merged clusters
-  std::map<int, std::vector<Cell>> merged_clusters;
-  for (const auto &[cluster_id, cells] : clusters) {
-    int root = find(cluster_id);
-    merged_clusters[root].insert(merged_clusters[root].end(), cells.begin(), cells.end());
-  }
+//   // Step 4: Collect merged clusters
+//   std::map<int, std::vector<Cell>> merged_clusters;
+//   for (const auto &[cluster_id, cells] : clusters) {
+//     int root = find(cluster_id);
+//     merged_clusters[root].insert(merged_clusters[root].end(), cells.begin(), cells.end());
+//   }
 
-  // Step 5: Re-index clusters to ensure ordinal indices
-  std::map<int, std::vector<Cell>> reindexed_clusters;
-  int new_index = 0;
-  for (const auto &[_, cluster_cells] : merged_clusters) {
-    reindexed_clusters[new_index++] = cluster_cells;
-  }
+//   // Step 5: Re-index clusters to ensure ordinal indices
+//   std::map<int, std::vector<Cell>> reindexed_clusters;
+//   int new_index = 0;
+//   for (const auto &[_, cluster_cells] : merged_clusters) {
+//     reindexed_clusters[new_index++] = cluster_cells;
+//   }
 
-  return reindexed_clusters;
-}
+//   return reindexed_clusters;
+// }
 
 std::pair<int, double> FrontierHelper::bestEntropyIndexScore(const std::vector<double> & entropies)
 {
