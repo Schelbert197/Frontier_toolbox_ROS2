@@ -1,12 +1,17 @@
 # Frontier_toolbox_ROS2
-A package to investigate lidar-inhibited SLAM narrowing the FOV of a 2D lidar with slam_toolbox
+These packages are created to study various exploration algorithms using Nav2 and slam_toolbox with both a narrowed FOV and full FOV lidar. These packages should allow the user to quickly and easily bring up an exploration robot in a simulated or real environment using the provided nodes and libraries in this repository.
 
 ![Example_pic](turtlebot_control/images/robot_example.png)
 
 ## Overview
-This package was created to study the performance of various frontier exploration algorithms paired wit slam_toolbox and Nav2 with both 360 degree and narrowed Field of View (FOV) on the LaserScan. Users can re-run my tests in simulation or on their own differential drive robots if they would like. 
+This package was created to study the performance of various frontier exploration algorithms paired wit slam_toolbox and Nav2 with both 360 degree and narrowed Field of View (FOV) on the LaserScan. This narrow FOV simulated a 2D lidar sensor that may be "damaged" or "occluded" during usage. Users can re-run my tests in simulation or on their own differential drive robots if they would like. 
 
-The purpose of this package is to simulate a turtlebot3 with a 2D lidar sensor that may be "damaged" or "occluded" in it's usage. Using slam_toolbox, the goal is to investigate the performance drop as the robot loses some of its FOV from the lidar, and measure that to establish a baseline for future research seeking to improve performance in these settings using active learning.
+For those using this package some provided features include:
+- Flatten a 3D to 2D lidar scan
+- Systematically and dynamically corrupt lidar data
+- Utilize my frontier generation library for other frontier exploration methods
+- Utilize my clustering library to cluster frontiers with DBSCAN
+- Test frontier algorithms provided in this package.
 
 **TODO: Link to portfolio post...**
 
@@ -24,6 +29,8 @@ The purpose of this package is to simulate a turtlebot3 with a 2D lidar sensor t
     - pcl_ros (ros-humble-pcl-ros)
 - libpcap-dev (to eliminate warn message)
 ## How to use
+
+**TODO: RENAME turtlebot_control package**
 
 ### Running a Full Simulation
 1. Build the packages from source and ensure that the packages turtlebot3, turtlebot3_msgs, turtlebot3_simulations, and all dependencies are installed and build on the `humble-devel` branch.
