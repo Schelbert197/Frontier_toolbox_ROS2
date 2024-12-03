@@ -226,7 +226,7 @@ private:
   Coord last_robot_position_;
   std::optional<Coord> robot_vp_position_;
   std::set<int> active_marker_ids_;
-  FrontierHelper::ClusterObj my_clusters_;
+  DBSCAN::ClusterObj my_clusters_;
   FrontierHelper::BannedAreas banned_;
 
   double viewpoint_depth_;
@@ -280,7 +280,7 @@ private:
   void selectNextBest(std::vector<Cell> & frontiers)
   {
     if (use_clustering_) {
-      int s_largest_cluster_id = FrontierHelper::findSecondLargestCluster(my_clusters_.clusters);
+      int s_largest_cluster_id = DBSCAN::findSecondLargestCluster(my_clusters_.clusters);
       publishToNav2ActionClient(my_clusters_.cell_centroids.at(s_largest_cluster_id));
       RCLCPP_INFO(get_logger(), "Replanning for second largest cluster");
     } else {
@@ -326,7 +326,8 @@ private:
       // Get the robot's current viewpoint position from the transform
       robot_vp_position_ = getRobotViewpoint();
       if (robot_vp_position_) {
-        findFrontiers();
+        frontiers_ = FrontierHelper::findFrontiers(map_data_, consider_free_edge_);
+        frontiers_ = cleanupFrontiers(frontiers_);
 
         if (use_clustering_) {
           my_clusters_.clusters = clusterFrontiers(frontiers_, 6.0, 5);
@@ -408,43 +409,25 @@ private:
     pub_goal_marker_->publish(viewpoint);
   }
 
-  void findFrontiers()
+  std::vector<Cell> cleanupFrontiers(const std::vector<Cell> & frontiers)
   {
-    // Reset all vectors
-    frontiers_.clear();
-    sampled_frontiers_.clear();
-    entropies_.clear();
-    unknowns_.clear();
-
-    // Loop through the map and find frontiers
-    int height = map_data_.info.height;
-    int width = map_data_.info.width;
-    const auto & data = map_data_.data;
-
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; ++x) {
-        int idx = y * width + x;
-        if (data[idx] == -1 &&
-          FrontierHelper::hasFreeNeighbor(map_data_, x, y) && !tooClose(std::make_pair(x, y)))
-        {
-          frontiers_.emplace_back(x, y);
-        } else if (consider_free_edge_ && FrontierHelper::explorableEdge(
-            map_data_, x,
-            y) && !tooClose(std::make_pair(x, y)))
-        {
-          frontiers_.emplace_back(x, y);
-        }
+    std::vector<Cell> filtered;
+    for (const auto & frontier : frontiers) {
+      if (!tooClose(frontier)) {
+        filtered.push_back(frontier);
       }
     }
-    // Convert the vector to a string
+    // Convert the vector to a string to print out if needed
     std::stringstream ss;
     ss << "Vector contents: ";
-    for (const auto & pair : frontiers_) {
+    for (const auto & pair : filtered) {
       ss << "(" << pair.first << ", " << pair.second << ") ";
     }
     // Print the vector contents of the frontier vector
     RCLCPP_DEBUG(get_logger(), "%s", ss.str().c_str());
+    return filtered;
   }
+
 
   void publishClustersAsMarkers(
     const std::map<int, std::vector<Cell>> & clusters,
@@ -689,8 +672,10 @@ private:
   Cell selectClusterGoal()
   {
     if (eval_cluster_size_) {
-      int largest_cluster_id = FrontierHelper::findLargestCluster(my_clusters_, banned_, map_data_);
-      RCLCPP_INFO(get_logger(), "selecting cluster %d with size: %ld", largest_cluster_id, my_clusters_.clusters.size());
+      int largest_cluster_id = DBSCAN::findLargestCluster(my_clusters_, banned_, map_data_);
+      RCLCPP_INFO(
+        get_logger(), "selecting cluster %d with size: %ld", largest_cluster_id,
+        my_clusters_.clusters.size());
       return replanIfStuck(my_clusters_.cell_centroids.at(largest_cluster_id));
     }
     Cell goal_frontier = bestScoringFrontier(my_clusters_.cell_centroids);
@@ -753,7 +738,7 @@ private:
     if (stuck()) {
       Cell goal_frontier =
         my_clusters_.cell_centroids.at(
-        FrontierHelper::findSecondLargestCluster(
+        DBSCAN::findSecondLargestCluster(
           my_clusters_.
           clusters));
       RCLCPP_INFO(get_logger(), "Going to second largest cluster because robot hasn't moved");

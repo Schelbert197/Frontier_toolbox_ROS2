@@ -130,3 +130,56 @@ std::map<int, std::vector<DBSCAN::Cell>> DBSCAN::mergeAdjacentClusters(
 
   return reindexed_clusters;
 }
+
+int DBSCAN::findLargestCluster(
+  const ClusterObj & cluster_obj, const FrontierHelper::BannedAreas & banned,
+  const nav_msgs::msg::OccupancyGrid & map_data)
+{
+  int largest_index = -1;   // Initialize to an invalid index
+  size_t max_size = 0;      // To store the largest size
+
+  // Iterate through all clusters
+  for (const auto & [cluster_id, cluster_cells] : cluster_obj.clusters) {
+    // Use cell centroids instead of the cluster directly
+    if (FrontierHelper::identifyBanned(cluster_obj.cell_centroids.at(cluster_id), banned, map_data)) {
+      continue;
+    }
+
+    // Check if the current cluster is larger than the max found so far
+    if (cluster_cells.size() > max_size) {
+      max_size = cluster_cells.size();
+      largest_index = cluster_id;  // Update to the current cluster's ID
+    }
+  }
+
+  return largest_index;   // Return the index of the largest cluster
+}
+
+int DBSCAN::findSecondLargestCluster(
+  const std::map<int, std::vector<FrontierHelper::Cell>> & clusters)
+{
+  int largest_index = -1;         // To store the index of the largest cluster
+  int second_largest_index = -1;   // To store the index of the second largest cluster
+  size_t max_size = 0;             // Size of the largest cluster
+  size_t second_max_size = 0;      // Size of the second largest cluster
+
+  for (const auto & cluster : clusters) {
+    size_t cluster_size = cluster.second.size();
+
+    if (cluster_size > max_size) {
+      // Update second largest to current largest
+      second_max_size = max_size;
+      second_largest_index = largest_index;
+
+      // Update largest
+      max_size = cluster_size;
+      largest_index = cluster.first;
+    } else if (cluster_size > second_max_size) {
+      // Update second largest
+      second_max_size = cluster_size;
+      second_largest_index = cluster.first;
+    }
+  }
+
+  return second_largest_index;   // Return the index of the second largest cluster
+}

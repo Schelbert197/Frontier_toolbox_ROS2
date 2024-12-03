@@ -18,18 +18,18 @@ public:
   using Cell = std::pair<int, int>;
   using Coord = std::pair<double, double>;
 
-  /// @brief A way to manage all objects associated with the clusters
-  struct ClusterObj
-  {
-    /// @brief A map of all of the cluster ID's and associated points.
-    std::map<int, std::vector<Cell>> clusters;
+  // /// @brief A way to manage all objects associated with the clusters
+  // struct ClusterObj
+  // {
+  //   /// @brief A map of all of the cluster ID's and associated points.
+  //   std::map<int, std::vector<Cell>> clusters;
 
-    /// @brief A vector of pairs containing centroids in world coordinates.
-    std::vector<Coord> world_centroids;
+  //   /// @brief A vector of pairs containing centroids in world coordinates.
+  //   std::vector<Coord> world_centroids;
 
-    /// @brief A vector of pairs containing centroids in cell coordinates.
-    std::vector<Cell> cell_centroids;
-  };
+  //   /// @brief A vector of pairs containing centroids in cell coordinates.
+  //   std::vector<Cell> cell_centroids;
+  // };
 
   struct BannedAreas
   {
@@ -86,7 +86,7 @@ public:
   /// @param y The y-coordinate of the cell.
   /// @return True if a free neighbor exists, false otherwise.
   static bool hasFreeNeighbor(
-    nav_msgs::msg::OccupancyGrid & map_data,
+    const nav_msgs::msg::OccupancyGrid & map_data,
     int x, int y);
 
   /// @brief Checks if a map cell is a frontier by being empty and map edge.
@@ -124,23 +124,6 @@ public:
     nav_msgs::msg::OccupancyGrid & map_data,
     int index,
     double rad);
-
-  // /// @brief Performs DBSCAN clustering on a set of points.
-  // /// @param points A matrix of points (each row represents a point).
-  // /// @param eps The maximum distance between points to be considered neighbors.
-  // /// @param min_samples The minimum number of points to form a dense region (cluster).
-  // /// @return A vector of labels where each element corresponds to the cluster ID of a point.
-  // ///         Points labeled as -1 are considered noise.
-  // static std::vector<int> performDBSCAN(
-  //   const cv::Mat & points,
-  //   double eps,
-  //   int min_samples);
-
-  // /// @brief Merges adjacent clusters in a map of clusters.
-  // /// @param clusters A map of cluster IDs to vectors of (x, y) cell coordinates.
-  // /// @return A new map with adjacent clusters merged.
-  // static std::map<int, std::vector<Cell>> mergeAdjacentClusters(
-  //   const std::map<int, std::vector<Cell>> & clusters);
 
   /// @brief Selects the least entropy from a list and returns its index and value.
   /// @param entropies A vector containing entropy values.
@@ -180,19 +163,6 @@ public:
   static std::vector<Cell> getCentroidCells(
     const nav_msgs::msg::OccupancyGrid & map,
     std::vector<Coord> centroids);
-
-  /// @brief Finds the cluster with the largest number of associated points.
-  /// @param clusters The hashmap of id's and their associated clustered points.
-  /// @return An integer representing the largest cluster.
-  static int findLargestCluster(
-    const FrontierHelper::ClusterObj & cluster_obj, const BannedAreas & banned,
-    const nav_msgs::msg::OccupancyGrid & map_data);
-
-  /// @brief Finds the index of the second largest cluster.
-  /// @param clusters A map of cluster indices to their associated points.
-  /// @return The index of the second largest cluster, or -1 if there are fewer than 2 clusters.
-  static int findSecondLargestCluster(
-    const std::map<int, std::vector<Cell>> & clusters);
 };
 
 #endif // FRONTIER_HELPER_HPP
