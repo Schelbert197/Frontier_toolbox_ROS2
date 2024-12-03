@@ -330,7 +330,7 @@ private:
         frontiers_ = cleanupFrontiers(frontiers_);
 
         if (use_clustering_) {
-          my_clusters_.clusters = clusterFrontiers(frontiers_, 6.0, 5);
+          my_clusters_.clusters = DBSCAN::clusterFrontiers(frontiers_, 6.0, 5);
           publishClustersAsMarkers(my_clusters_.clusters, "/map", map_data_.info.resolution, 0.06);
           updateClusters(); // sets cluster centroid array
         }
@@ -547,55 +547,6 @@ private:
 
     // Clear the active_marker_ids_ list to reset tracking
     active_marker_ids_.clear();
-  }
-
-  std::map<int, std::vector<Cell>> clusterFrontiers(
-    const std::vector<Cell> & frontiers, float eps,
-    int min_samples)
-  {
-    cv::Mat points;
-    for (const auto & f : frontiers) {
-      points.push_back(cv::Vec2f(f.first, f.second));
-    }
-
-    auto labels = DBSCAN::performDBSCAN(points, eps, min_samples);
-
-    // Organize clusters
-    std::map<int, std::vector<Cell>> clusters;
-    for (size_t i = 0; i < frontiers.size(); ++i) {
-      int label = labels.at(i);
-      if (label >= 0) {      // Ignore noise
-        clusters[label].emplace_back(frontiers.at(i));
-      }
-    }
-
-    // Filter out small clusters
-    auto filtered_clusters = filterClusters(clusters, min_samples);
-
-    // Merge adjacent clusters
-    filtered_clusters = DBSCAN::mergeAdjacentClusters(filtered_clusters);
-
-    RCLCPP_INFO(get_logger(), "Number of frontiers: %ld", frontiers.size());
-    // Print cluster information
-    for (const auto & [id, cluster] : filtered_clusters) {
-      std::cout << "Cluster " << id << " has " << cluster.size() << " points\n";
-    }
-
-    RCLCPP_INFO(get_logger(), "Number of clusters: %ld", filtered_clusters.size());
-    return filtered_clusters;
-  }
-
-  std::map<int, std::vector<Cell>> filterClusters(
-    const std::map<int, std::vector<Cell>> & clusters,
-    int min_samples)
-  {
-    std::map<int, std::vector<Cell>> filtered_clusters;
-    for (const auto & [id, cluster] : clusters) {
-      if (static_cast<int>(cluster.size()) >= min_samples) {
-        filtered_clusters[id] = cluster;
-      }
-    }
-    return filtered_clusters;
   }
 
   bool tooClose(const Cell & frontier)

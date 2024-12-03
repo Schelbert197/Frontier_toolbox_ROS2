@@ -28,6 +28,23 @@ public:
     std::vector<Cell> cell_centroids;
   };
 
+  /// @brief Main function to create clusters.
+  /// @param frontiers The vector of frontier cells to be clustered.
+  /// @param eps Epsilon: The maximum distance to consider two points as neighbors.
+  /// @param min_samples The minimum number of neighbors required to make a point a core point.
+  /// @return A map of cluster IDs and their associated clustered points.
+  static std::map<int, std::vector<DBSCAN::Cell>> clusterFrontiers(
+  const std::vector<Cell> & frontiers, float eps,
+  int min_samples);
+
+  /// @brief Filters out clusters smaller then the minimum number of samples
+  /// @param clusters The existing map of clustered frontiers
+  /// @param min_samples The minimum number of neighbors required to make a point a core point.
+  /// @return A smaller map without the noise data.
+  static std::map<int, std::vector<DBSCAN::Cell>> filterClusters(
+  const std::map<int, std::vector<Cell>> & clusters,
+  int min_samples);
+
   /// @brief Performs DBSCAN clustering on a set of points.
   /// @param points A matrix of points (each row represents a point).
   /// @param eps The maximum distance between points to be considered neighbors.

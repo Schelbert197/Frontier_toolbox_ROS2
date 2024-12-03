@@ -1,5 +1,62 @@
 #include "frontier_exp_cpp/dbscan.hpp"
 
+std::map<int, std::vector<DBSCAN::Cell>> DBSCAN::clusterFrontiers(
+  const std::vector<Cell> & frontiers, float eps,
+  int min_samples)
+{
+  cv::Mat points;
+  for (const auto & f : frontiers) {
+    points.push_back(cv::Vec2f(f.first, f.second));
+  }
+
+  auto labels = DBSCAN::performDBSCAN(points, eps, min_samples);
+
+  // Organize clusters
+  std::map<int, std::vector<Cell>> clusters;
+  for (size_t i = 0; i < frontiers.size(); ++i) {
+    int label = labels.at(i);
+    if (label >= 0) {        // Ignore noise
+      clusters[label].emplace_back(frontiers.at(i));
+    }
+  }
+
+  // Filter out small clusters
+  auto filtered_clusters = DBSCAN::filterClusters(clusters, min_samples);
+
+  // Merge adjacent clusters
+  filtered_clusters = DBSCAN::mergeAdjacentClusters(filtered_clusters);
+
+  // RCLCPP_INFO(get_logger(), "Number of frontiers: %ld", frontiers.size());
+  // // Print cluster information
+  // for (const auto & [id, cluster] : filtered_clusters) {
+  //   std::cout << "Cluster " << id << " has " << cluster.size() << " points\n";
+  // }
+
+  // RCLCPP_INFO(get_logger(), "Number of clusters: %ld", filtered_clusters.size());
+  std::cout << "Number of frontiers: " << frontiers.size() << "\n";
+
+// Print cluster information
+  for (const auto & [id, cluster] : filtered_clusters) {
+    std::cout << "Cluster " << id << " has " << cluster.size() << " points\n";
+  }
+
+  std::cout << "Number of clusters: " << filtered_clusters.size() << "\n";
+  return filtered_clusters;
+}
+
+std::map<int, std::vector<DBSCAN::Cell>> DBSCAN::filterClusters(
+  const std::map<int, std::vector<Cell>> & clusters,
+  int min_samples)
+{
+  std::map<int, std::vector<Cell>> filtered_clusters;
+  for (const auto & [id, cluster] : clusters) {
+    if (static_cast<int>(cluster.size()) >= min_samples) {
+      filtered_clusters[id] = cluster;
+    }
+  }
+  return filtered_clusters;
+}
+
 std::vector<int> DBSCAN::performDBSCAN(
   const cv::Mat & points,
   double eps,
@@ -141,7 +198,10 @@ int DBSCAN::findLargestCluster(
   // Iterate through all clusters
   for (const auto & [cluster_id, cluster_cells] : cluster_obj.clusters) {
     // Use cell centroids instead of the cluster directly
-    if (FrontierHelper::identifyBanned(cluster_obj.cell_centroids.at(cluster_id), banned, map_data)) {
+    if (FrontierHelper::identifyBanned(
+        cluster_obj.cell_centroids.at(cluster_id), banned,
+        map_data))
+    {
       continue;
     }
 
