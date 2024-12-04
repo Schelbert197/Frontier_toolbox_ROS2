@@ -728,49 +728,33 @@ private:
 
   Cell bestScoringFrontier(const std::vector<Cell> & frontiers)
   {
-    double total_entropy;
-    // Establish baseline and reset for preferred scoring approach
-    if (use_entropy_calc_) {
-      total_entropy = FrontierHelper::calculateMapEntropy(map_data_.data);
-      RCLCPP_INFO(get_logger(), "Total Map Entropy %f", total_entropy);
-    }
-
-    // Loop through all frontiers and get score
-    for (size_t i = 0; i < frontiers.size(); ++i) {
-      const auto & frontier = frontiers.at(i);
-      int idx = frontier.second * map_data_.info.width + frontier.first;
-      int unknowns = FrontierHelper::countUnknownCellsWithinRadius(map_data_, idx, entropy_radius_);
-      if (FrontierHelper::identifyBanned(frontiers.at(i), banned_, map_data_)) {
-        unknowns = 0;
-      }
-
-      if (use_entropy_calc_) {
-        // calculate current reduced entropy and place in list
-        entropies_.emplace_back(
-          total_entropy - (unknowns * FrontierHelper::calculateEntropy(-1)) +
-          (unknowns * FrontierHelper::calculateEntropy(0)));
-      } else {
-        unknowns_.emplace_back(unknowns);
-      }
-    }
+    Cell goal;
 
     if (use_entropy_calc_) {
-      // Find and return best entropy and index
-      auto [index, entropy] = FrontierHelper::bestEntropyIndexScore(entropies_);
-      best_frontier_idx_ = index;
+      auto [goal_frontier, entropies, idx] = FrontierHelper::scoreByEntropy(
+        frontiers, map_data_,
+        entropy_radius_,
+        banned_);
+      goal = goal_frontier;
+      entropies_ = entropies;
+      best_frontier_idx_ = idx;
       RCLCPP_INFO(
         get_logger(), "Selecting frontier %d, with entropy reduction %f", best_frontier_idx_,
-        entropy);
+        entropies.at(idx));
     } else {
-      // Find and return best score and index
-      auto [index, score] = FrontierHelper::bestUnknownsIndexScore(unknowns_);
-      best_frontier_idx_ = index;
+      auto [goal_frontier, unknowns, idx] = FrontierHelper::scoreByFlipCount(
+        frontiers, map_data_,
+        entropy_radius_,
+        banned_);
+      goal = goal_frontier;
+      unknowns_ = unknowns;
+      best_frontier_idx_ = idx;
       RCLCPP_INFO(
         get_logger(), "Selecting frontier %d, with best score %d", best_frontier_idx_,
-        score);
+        unknowns.at(idx));
     }
 
-    return frontiers.at(best_frontier_idx_);
+    return goal;
   }
 };
 

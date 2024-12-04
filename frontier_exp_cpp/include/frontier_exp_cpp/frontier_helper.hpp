@@ -18,19 +18,6 @@ public:
   using Cell = std::pair<int, int>;
   using Coord = std::pair<double, double>;
 
-  // /// @brief A way to manage all objects associated with the clusters
-  // struct ClusterObj
-  // {
-  //   /// @brief A map of all of the cluster ID's and associated points.
-  //   std::map<int, std::vector<Cell>> clusters;
-
-  //   /// @brief A vector of pairs containing centroids in world coordinates.
-  //   std::vector<Coord> world_centroids;
-
-  //   /// @brief A vector of pairs containing centroids in cell coordinates.
-  //   std::vector<Cell> cell_centroids;
-  // };
-
   struct BannedAreas
   {
     /// @brief A radius [m] around a cell to consider "banned".
@@ -41,9 +28,9 @@ public:
   };
 
   /// @brief Finds all "frontiers" in an OccupancyGrid map.
-  /// @param map_data 
-  /// @param consider_free_edge 
-  /// @return A vector of std::pair<int, int> grid cells of frontiers. 
+  /// @param map_data
+  /// @param consider_free_edge
+  /// @return A vector of std::pair<int, int> grid cells of frontiers.
   static std::vector<Cell> findFrontiers(
     const nav_msgs::msg::OccupancyGrid & map_data,
     bool consider_free_edge);
@@ -121,9 +108,55 @@ public:
   /// @param rad The radius within which to count unknown cells.
   /// @return The count of unknown cells within the radius.
   static int countUnknownCellsWithinRadius(
-    nav_msgs::msg::OccupancyGrid & map_data,
+    const nav_msgs::msg::OccupancyGrid & map_data,
     int index,
     double rad);
+
+  /// @brief Overloaded fcn scores a list of candidates by calculating the entropy of various state updates.
+  /// @details This is an overloaded function that does NOT consider banned locations
+  /// @param frontiers The list of frontier coordinates (x, y).
+  /// @param map_data The occupancy grid map data.
+  /// @param entropy_radius The radius around candidate cells to consider for the state update.
+  /// @return The best scoring cell, the list of entropies, and the index of the best entropy.
+  /// @see scoreByEntropy(const std::vector<Cell> & frontiers, const nav_msgs::msg::OccupancyGrid & map_data, double entropy_radius, BannedAreas banned);
+  static std::tuple<Cell, std::vector<double>, int> scoreByEntropy(
+    const std::vector<Cell> & frontiers, const nav_msgs::msg::OccupancyGrid & map_data,
+    double entropy_radius);
+
+  /// @brief Scores a list of candidates by calculating the entropy of various state updates.
+  /// @details This is an overloaded function that does NOT consider banned locations
+  /// @param frontiers The list of frontier coordinates (x, y).
+  /// @param map_data The occupancy grid map data.
+  /// @param entropy_radius The radius around candidate cells to consider for the state update.
+  /// @param banned The struct of coordinates considered to be banned from goal pose consideration.
+  /// @return The best scoring cell, the list of entropies, and the index of the best entropy.
+  static std::tuple<Cell, std::vector<double>, int> scoreByEntropy(
+    const std::vector<Cell> & frontiers, const nav_msgs::msg::OccupancyGrid & map_data,
+    double entropy_radius,
+    BannedAreas banned);
+
+  /// @brief Overloaded fcn scores a list of candidates by calculating the unknown cells flipped in various state updates.
+  /// @details This is an overloaded function that does NOT consider banned locations
+  /// @param frontiers The list of frontier coordinates (x, y).
+  /// @param map_data The occupancy grid map data.
+  /// @param entropy_radius The radius around candidate cells to consider for the state update.
+  /// @return The best scoring cell, the list of entropies, and the index of the best entropy.
+  /// @see scoreByFlipCount(const std::vector<Cell> & frontiers, const nav_msgs::msg::OccupancyGrid & map_data, double entropy_radius, BannedAreas banned);
+  static std::tuple<Cell, std::vector<int>, int> scoreByFlipCount(
+    const std::vector<Cell> & frontiers, const nav_msgs::msg::OccupancyGrid & map_data,
+    double entropy_radius);
+
+  /// @brief Scores a list of candidates by calculating the unknown cells flipped in various state updates.
+  /// @details This is an overloaded function that does NOT consider banned locations
+  /// @param frontiers The list of frontier coordinates (x, y).
+  /// @param map_data The occupancy grid map data.
+  /// @param entropy_radius The radius around candidate cells to consider for the state update.
+  /// @param banned The struct of coordinates considered to be banned from goal pose consideration.
+  /// @return The best scoring cell, the list of entropies, and the index of the best entropy.
+  static std::tuple<Cell, std::vector<int>, int> scoreByFlipCount(
+    const std::vector<Cell> & frontiers, const nav_msgs::msg::OccupancyGrid & map_data,
+    double entropy_radius,
+    BannedAreas banned);
 
   /// @brief Selects the least entropy from a list and returns its index and value.
   /// @param entropies A vector containing entropy values.

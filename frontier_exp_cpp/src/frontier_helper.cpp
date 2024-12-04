@@ -5,35 +5,35 @@
 #include <set>
 #include <rclcpp/rclcpp.hpp> // For logger statements
 
-  std::vector<FrontierHelper::Cell> FrontierHelper::findFrontiers(
-    const nav_msgs::msg::OccupancyGrid & map_data,
-    bool consider_free_edge)
-  {
-    std::vector<FrontierHelper::Cell> frontiers;
+std::vector<FrontierHelper::Cell> FrontierHelper::findFrontiers(
+  const nav_msgs::msg::OccupancyGrid & map_data,
+  bool consider_free_edge)
+{
+  std::vector<FrontierHelper::Cell> frontiers;
 
-    // Loop through the map and find frontiers
-    int height = map_data.info.height;
-    int width = map_data.info.width;
-    const auto & data = map_data.data;
+  // Loop through the map and find frontiers
+  int height = map_data.info.height;
+  int width = map_data.info.width;
+  const auto & data = map_data.data;
 
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; ++x) {
-        int idx = y * width + x;
-        if (data[idx] == -1 &&
-          FrontierHelper::hasFreeNeighbor(map_data, x, y))
-        {
-          frontiers.emplace_back(x, y);
-        } else if (consider_free_edge && FrontierHelper::explorableEdge(
-            map_data, x,
-            y))
-        {
-          frontiers.emplace_back(x, y);
-        }
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      int idx = y * width + x;
+      if (data[idx] == -1 &&
+        FrontierHelper::hasFreeNeighbor(map_data, x, y))
+      {
+        frontiers.emplace_back(x, y);
+      } else if (consider_free_edge && FrontierHelper::explorableEdge(
+          map_data, x,
+          y))
+      {
+        frontiers.emplace_back(x, y);
       }
     }
-    
-    return frontiers;
   }
+
+  return frontiers;
+}
 
 std::map<FrontierHelper::Coord, int> FrontierHelper::stageBanned(
   const Cell & cell, std::map<Coord, int> & staged,
@@ -150,7 +150,7 @@ bool FrontierHelper::explorableEdge(
 
   // Check if the cell is on the edge of the map
   // A cell is on the edge if it's in the first/last row or first/last column
-  return (x == 0 || x == width - 1 || y == 0 || y == height - 1);
+  return x == 0 || x == width - 1 || y == 0 || y == height - 1;
 }
 
 bool FrontierHelper::occluded(
@@ -196,7 +196,7 @@ double FrontierHelper::calculateEntropy(int cell_value)
 }
 
 int FrontierHelper::countUnknownCellsWithinRadius(
-  nav_msgs::msg::OccupancyGrid & map_data,
+  const nav_msgs::msg::OccupancyGrid & map_data,
   int index,
   double rad)
 {
@@ -242,6 +242,121 @@ int FrontierHelper::countUnknownCellsWithinRadius(
   }
 
   return unknown_count;
+}
+
+std::tuple<FrontierHelper::Cell, std::vector<double>, int> FrontierHelper::scoreByEntropy(
+  const std::vector<FrontierHelper::Cell> & frontiers,
+  const nav_msgs::msg::OccupancyGrid & map_data,
+  double entropy_radius)
+{
+  double total_entropy = FrontierHelper::calculateMapEntropy(map_data.data);
+
+  // Establish objeccts
+  std::vector<double> entropies;
+  int best_frontier_idx;
+
+  // Loop through all frontiers and get score
+  for (size_t i = 0; i < frontiers.size(); ++i) {
+    const auto & frontier = frontiers.at(i);
+    int idx = frontier.second * map_data.info.width + frontier.first;
+    int unknowns = FrontierHelper::countUnknownCellsWithinRadius(map_data, idx, entropy_radius);
+
+    // calculate current reduced entropy and place in list
+    entropies.emplace_back(
+      total_entropy - (unknowns * FrontierHelper::calculateEntropy(-1)) +
+      (unknowns * FrontierHelper::calculateEntropy(0)));
+  }
+
+  // Find and return best entropy and index
+  auto [index, entropy] = FrontierHelper::bestEntropyIndexScore(entropies);
+  best_frontier_idx = index;
+
+  return std::make_tuple(frontiers.at(best_frontier_idx), entropies, best_frontier_idx);
+}
+
+std::tuple<FrontierHelper::Cell, std::vector<double>, int> FrontierHelper::scoreByEntropy(
+  const std::vector<FrontierHelper::Cell> & frontiers,
+  const nav_msgs::msg::OccupancyGrid & map_data,
+  double entropy_radius, FrontierHelper::BannedAreas banned)
+{
+  double total_entropy = FrontierHelper::calculateMapEntropy(map_data.data);
+
+  // Establish objeccts
+  std::vector<double> entropies;
+  int best_frontier_idx;
+
+  // Loop through all frontiers and get score
+  for (size_t i = 0; i < frontiers.size(); ++i) {
+    const auto & frontier = frontiers.at(i);
+    int idx = frontier.second * map_data.info.width + frontier.first;
+    int unknowns = FrontierHelper::countUnknownCellsWithinRadius(map_data, idx, entropy_radius);
+    if (FrontierHelper::identifyBanned(frontiers.at(i), banned, map_data)) {
+      unknowns = 0;
+    }
+
+    // calculate current reduced entropy and place in list
+    entropies.emplace_back(
+      total_entropy - (unknowns * FrontierHelper::calculateEntropy(-1)) +
+      (unknowns * FrontierHelper::calculateEntropy(0)));
+  }
+
+  // Find and return best entropy and index
+  auto [index, entropy] = FrontierHelper::bestEntropyIndexScore(entropies);
+  best_frontier_idx = index;
+
+  return std::make_tuple(frontiers.at(best_frontier_idx), entropies, best_frontier_idx);
+}
+
+std::tuple<FrontierHelper::Cell, std::vector<int>, int> FrontierHelper::scoreByFlipCount(
+    const std::vector<FrontierHelper::Cell> & frontiers, const nav_msgs::msg::OccupancyGrid & map_data,
+    double entropy_radius)
+{
+  // Establish objeccts
+  std::vector<int> unknowns_flipped;
+  int best_frontier_idx;
+
+  // Loop through all frontiers and get score
+  for (size_t i = 0; i < frontiers.size(); ++i) {
+    const auto & frontier = frontiers.at(i);
+    int idx = frontier.second * map_data.info.width + frontier.first;
+    int unknowns = FrontierHelper::countUnknownCellsWithinRadius(map_data, idx, entropy_radius);
+
+    unknowns_flipped.emplace_back(unknowns);
+  }
+
+  // Find and return best score and index
+  auto [index, score] = FrontierHelper::bestUnknownsIndexScore(unknowns_flipped);
+  best_frontier_idx = index;
+
+  return std::make_tuple(frontiers.at(best_frontier_idx), unknowns_flipped, best_frontier_idx);
+}
+
+std::tuple<FrontierHelper::Cell, std::vector<int>, int> FrontierHelper::scoreByFlipCount(
+    const std::vector<FrontierHelper::Cell> & frontiers, const nav_msgs::msg::OccupancyGrid & map_data,
+    double entropy_radius,
+    FrontierHelper::BannedAreas banned)
+{
+  // Establish objeccts
+  std::vector<int> unknowns_flipped;
+  int best_frontier_idx;
+
+  // Loop through all frontiers and get score
+  for (size_t i = 0; i < frontiers.size(); ++i) {
+    const auto & frontier = frontiers.at(i);
+    int idx = frontier.second * map_data.info.width + frontier.first;
+    int unknowns = FrontierHelper::countUnknownCellsWithinRadius(map_data, idx, entropy_radius);
+    if (FrontierHelper::identifyBanned(frontiers.at(i), banned, map_data)) {
+      unknowns = 0;
+    }
+
+    unknowns_flipped.emplace_back(unknowns);
+  }
+
+  // Find and return best score and index
+  auto [index, score] = FrontierHelper::bestUnknownsIndexScore(unknowns_flipped);
+  best_frontier_idx = index;
+
+  return std::make_tuple(frontiers.at(best_frontier_idx), unknowns_flipped, best_frontier_idx);
 }
 
 std::pair<int, double> FrontierHelper::bestEntropyIndexScore(const std::vector<double> & entropies)

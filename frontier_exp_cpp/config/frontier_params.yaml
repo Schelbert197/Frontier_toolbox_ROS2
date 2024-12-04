@@ -2,14 +2,14 @@ frontier_explorer:
   ros__parameters:
     use_naive: false
     use_clustering: true
-    eval_cluster_size: true
+    eval_cluster_size: false
     consider_free_edge: true
     viewpoint_depth: 1.0
     use_action_client_node: true
     entropy_radius: 2.4
     robot_radius: 0.35
     use_sampling: true
-    use_entropy_calc: true
+    use_entropy_calc: false
     sampling_threshold: 250
     banning_radius: 1.0
     stuck_tolerance: 0.01
