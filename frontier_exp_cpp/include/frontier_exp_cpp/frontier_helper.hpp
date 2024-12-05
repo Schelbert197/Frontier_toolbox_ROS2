@@ -97,6 +97,18 @@ public:
     int x1, int y1, int x2, int y2, int width,
     const std::vector<int8_t> & map_data);
 
+  /// @brief Calculates the distance between a cell and coordinate.
+  /// @param cell A map cell.
+  /// @param coordinate A map coordinate position.
+  /// @return The euclidean distance in meters.
+  static double cellCoordDistance(
+    const Cell & cell, const Coord coordinate,
+    const nav_msgs::msg::OccupancyGrid & map_data);
+
+  static Cell selectByDistance(const std::vector<Cell> & candidates, 
+  const Coord robot_vp_position,
+  const nav_msgs::msg::OccupancyGrid & map_data);
+
   /// @brief Calculates the entropy of a map cell value.
   /// @param cell_value The occupancy value of the cell (-1: unknown, 0: free, 100: occupied).
   /// @return The entropy value for the given cell.

@@ -182,6 +182,30 @@ bool FrontierHelper::occluded(
   return false;
 }
 
+double FrontierHelper::cellCoordDistance(
+  const Cell & cell, const Coord coordinate,
+  const nav_msgs::msg::OccupancyGrid & map_data)
+{
+  auto [fx, fy] = FrontierHelper::cellToWorld(cell, map_data);
+  auto [rx, ry] = coordinate;
+  return std::hypot(fx - rx, fy - ry);
+}
+
+FrontierHelper::Cell FrontierHelper::selectByDistance(const std::vector<Cell> & candidates, 
+  const Coord robot_vp_position,
+  const nav_msgs::msg::OccupancyGrid & map_data)
+{
+  // Use std::min_element with a lambda function.
+    auto goal_frontier = *std::min_element(
+        candidates.begin(), candidates.end(),
+        [&robot_vp_position, &map_data](const auto & f1, const auto & f2) {
+            return FrontierHelper::cellCoordDistance(f1, robot_vp_position, map_data) < 
+                   FrontierHelper::cellCoordDistance(f2, robot_vp_position, map_data);
+        });
+
+    return goal_frontier;
+}
+
 double FrontierHelper::calculateEntropy(int cell_value)
 {
   double v;
@@ -308,8 +332,9 @@ std::tuple<FrontierHelper::Cell, std::vector<double>, int> FrontierHelper::score
 }
 
 std::tuple<FrontierHelper::Cell, std::vector<int>, int> FrontierHelper::scoreByFlipCount(
-    const std::vector<FrontierHelper::Cell> & frontiers, const nav_msgs::msg::OccupancyGrid & map_data,
-    double entropy_radius)
+  const std::vector<FrontierHelper::Cell> & frontiers,
+  const nav_msgs::msg::OccupancyGrid & map_data,
+  double entropy_radius)
 {
   // Establish objeccts
   std::vector<int> unknowns_flipped;
@@ -332,9 +357,10 @@ std::tuple<FrontierHelper::Cell, std::vector<int>, int> FrontierHelper::scoreByF
 }
 
 std::tuple<FrontierHelper::Cell, std::vector<int>, int> FrontierHelper::scoreByFlipCount(
-    const std::vector<FrontierHelper::Cell> & frontiers, const nav_msgs::msg::OccupancyGrid & map_data,
-    double entropy_radius,
-    FrontierHelper::BannedAreas banned)
+  const std::vector<FrontierHelper::Cell> & frontiers,
+  const nav_msgs::msg::OccupancyGrid & map_data,
+  double entropy_radius,
+  FrontierHelper::BannedAreas banned)
 {
   // Establish objeccts
   std::vector<int> unknowns_flipped;

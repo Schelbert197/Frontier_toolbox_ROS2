@@ -325,7 +325,7 @@ private:
     if (current_state.id() == lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE) {
       // Get the robot's current viewpoint position from the transform
       robot_vp_position_ = getRobotViewpoint();
-      if (robot_vp_position_) {
+      if (robot_vp_position_.has_value()) {
         frontiers_ = FrontierHelper::findFrontiers(map_data_, consider_free_edge_);
         frontiers_ = cleanupFrontiers(frontiers_);
 
@@ -551,7 +551,7 @@ private:
 
   bool tooClose(const Cell & frontier)
   {
-    return distanceToRobot(frontier) <= robot_radius_;
+    return FrontierHelper::cellCoordDistance(frontier, robot_position_, map_data_) <= robot_radius_;
   }
 
   bool stuck() const
@@ -609,14 +609,16 @@ private:
   Cell selectNaiveGoal()
   {
     if (use_clustering_) {
-      return selectByDistance(my_clusters_.cell_centroids);
+      return FrontierHelper::selectByDistance(
+        my_clusters_.cell_centroids, robot_vp_position_.value(),
+        map_data_);
     } else if (use_sampling_ && static_cast<int>(frontiers_.size()) > sampling_threshold) {
-      return selectByDistance(
+      return FrontierHelper::selectByDistance(
         FrontierHelper::sampleRandomFrontiers(
           frontiers_,
-          sampling_threshold));
+          sampling_threshold), robot_vp_position_.value(), map_data_);
     }
-    return selectByDistance(frontiers_);
+    return FrontierHelper::selectByDistance(frontiers_, robot_vp_position_.value(), map_data_);
   }
 
   // Helper function to handle clustered goal selection
@@ -697,33 +699,6 @@ private:
     } else {
       return curr_goal;
     }
-  }
-
-  double distanceToRobot(const Cell & frontier)
-  {
-    auto [fx, fy] = FrontierHelper::cellToWorld(frontier, map_data_);
-    auto [rx, ry] = robot_position_;
-    return std::hypot(fx - rx, fy - ry);
-  }
-
-  double distanceToRobotVP(const Cell & frontier)
-  {
-    auto [fx, fy] = FrontierHelper::cellToWorld(frontier, map_data_);
-    double rx = 0.0, ry = 0.0; // Initialize rx and ry
-    if (robot_vp_position_) { // Assign values if robot_vp_position_ is set
-      std::tie(rx, ry) = *robot_vp_position_;   // Dereferencing pointer :O
-    }
-    return std::hypot(fx - rx, fy - ry);
-  }
-
-  Cell selectByDistance(const std::vector<Cell> & candidates)
-  {
-    auto goal_frontier = *std::min_element(
-      candidates.begin(), candidates.end(), [this](const auto & f1, const auto & f2)
-      {
-        return distanceToRobotVP(f1) < distanceToRobotVP(f2);
-      });
-    return goal_frontier;
   }
 
   Cell bestScoringFrontier(const std::vector<Cell> & frontiers)
