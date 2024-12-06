@@ -1,5 +1,5 @@
 # Frontier_toolbox_ROS2
-These packages are created to study various exploration algorithms using Nav2 and slam_toolbox with both a narrowed FOV and full FOV lidar. These packages should allow the user to quickly and easily bring up an exploration robot in a simulated or real environment using the provided nodes and libraries in this repository.
+These packages are created to be an easy-to-use platform to rapidly prototype frontier exploration algorithms on a robot in various environments with both full and limited field of view sensor data. Through this package, users should be able to easily leverage the provided libraries to generate, cluster, and evaluate frontiers or integrate the provided component functions into their own novel approaches.
 
 ![Example_pic1](frontier_exp_cpp/images/frontier_demo.gif)![Example_pic2](frontier_exp_cpp/images/frontier_demo2.gif)
 
@@ -15,6 +15,9 @@ For those using this package some provided features include:
 
 ## Portfolio Post
 To read more about this project, please visit my [portfolio website post!](https://schelbert197.github.io/portfolio/portfolio_featured/frontier/)
+
+## Using this Repo
+Detailed instructions on how to use the provided ROS2 packages and libraries to simulate or deploy your own robots can be found in the [use](use.md) file
 
 ## Package Dependencies
 - ROS2 Humble
