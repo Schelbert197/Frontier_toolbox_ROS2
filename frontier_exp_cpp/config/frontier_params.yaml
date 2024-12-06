@@ -2,7 +2,7 @@ frontier_explorer:
   ros__parameters:
     use_naive: true
     use_clustering: true
-    eval_cluster_size: false
+    eval_cluster_size: true
     consider_free_edge: false
     viewpoint_depth: 1.0
     use_action_client_node: true

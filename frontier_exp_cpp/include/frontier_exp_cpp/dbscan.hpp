@@ -45,7 +45,7 @@ public:
   const std::map<int, std::vector<Cell>> & clusters,
   int min_samples);
 
-  /// @brief Performs DBSCAN clustering on a set of points.
+  /// @brief Performs DBSCAN labeling on a set of points.
   /// @param points A matrix of points (each row represents a point).
   /// @param eps The maximum distance between points to be considered neighbors.
   /// @param min_samples The minimum number of points to form a dense region (cluster).
