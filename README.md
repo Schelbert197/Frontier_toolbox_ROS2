@@ -32,3 +32,6 @@ Detailed instructions on how to use the provided ROS2 packages and libraries to 
     - pcl_conversions
     - pcl_ros (ros-humble-pcl-ros)
 - libpcap-dev (to eliminate warn message)
+
+## License
+This package is released under the Apache-2.0 License. Related packages like Nav2 are licensed under thee BSD 2.0 License, but are not required for the usage of every package in this repository.

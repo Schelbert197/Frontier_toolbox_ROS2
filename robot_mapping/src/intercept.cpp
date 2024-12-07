@@ -1,14 +1,26 @@
-/// \file
-/// \brief This node intercepts laserscan messages and corrupts them to test slamtoolbox.
-///
-/// PARAMETERS:
-///     \param window (int): The allowable range in degrees for the laserscan FOV
+// Copyright 2024 Srikanth Schelbert.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+/// @brief This node intercepts LaserScan messages and corrupts the data for testing.
 ///
 /// PUBLISHES:
-///     \param /narrow/scan (sensor_msgs::msg::LaserScan): Publishes intercepted narrow laserscan
+///     @param /narrow/scan (sensor_msgs::msg::LaserScan): Publishes intercepted narrow laserscan
 ///
 /// SUBSCRIBES:
-///     \param /scan (sensor_msgs::msg::LaserScan): Subscribes to the laserscan for the turtlebot
+///     @param /scan (sensor_msgs::msg::LaserScan): Subscribes to the laserscan for the turtlebot
+///     @param /fov (int): The field of view (FOV) in degrees the lidar may have.
+
 #include <iostream>
 #include <cstdio>
 #include <chrono>
