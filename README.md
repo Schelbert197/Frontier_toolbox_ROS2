@@ -19,7 +19,8 @@ To read more about this project, please visit my [portfolio website post!](https
 ## Using this Repo
 Detailed instructions on how to use the provided ROS2 packages and libraries to simulate or deploy your own robots can be found in the [use](use.md) file
 
-## Package Dependencies
+## Main Package Dependencies
+Some of these may be needed for the simulation but not for the library.
 - ROS2 Humble
 - Gazebo Classic
 - slam_toolbox
@@ -32,6 +33,12 @@ Detailed instructions on how to use the provided ROS2 packages and libraries to 
     - pcl_conversions
     - pcl_ros (ros-humble-pcl-ros)
 - libpcap-dev (to eliminate warn message)
+
+To install via rosdep copy the command below assuming frontier_toolbox in in the src folder of your ros2 workspace:
+~~~~~
+rosdep install --from-paths src/frontier_toolbox/frontier_exp_cpp/ src/frontier_toolbox/nav_client_cpp/ src/frontier_toolbox/robot_mapping/ --ignore-src --rosdistro humble --os=ubuntu:22.04 --skip-keys "opencv4 opencv2" --reinstall -y
+~~~~~
+A dependencies file is also included under `ros2_dependencies.yaml`
 
 ## License
 This package is released under the Apache-2.0 License. Related packages like Nav2 are licensed under thee BSD 2.0 License, but are not required for the usage of every package in this repository.
