@@ -1,0 +1,23 @@
+<launch>
+    <!-- Arguments -->
+
+    <!-- Launch intercept node -->
+    <node pkg="robot_mapping" exec="intercept" name="intercept">
+    </node>
+
+    <!-- Launch flattener node -->
+    <!-- <node pkg="isaac_sim_demo" exec="points_to_scan" name="points_to_scan"></node> -->
+    <node pkg="robot_mapping" exec="pointcloud_to_laserscan" name="pointcloud_to_laserscan"></node>
+
+    <!-- Launch path node -->
+    <node pkg="robot_mapping" exec="path_publisher" name="path_publisher"></node>
+
+    <!-- Launch Odometry repub node -->
+    <node pkg="robot_mapping" exec="odom_repub" name="odom_repub"></node>
+
+    <!-- Launch slam-toolbox in online async mode -->
+    <include file="$(find-pkg-share slam_toolbox)/launch/online_async_launch.py">
+        <arg name="slam_params_file" value="$(find-pkg-share robot_mapping)/config/mapper_params_online_async_robot.yaml"/>
+    </include>
+
+</launch>

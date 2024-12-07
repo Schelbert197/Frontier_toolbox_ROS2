@@ -18,17 +18,17 @@
     </group>
 
     <!-- Launch rviz to show the robot moving around -->
-    <include file="$(find-pkg-share turtlebot_control)/launch/turtlebot3_rviz.launch.py" />
+    <include file="$(find-pkg-share robot_mapping)/launch/mapper_rviz.launch.py" />
 
     <!-- Launch intercept node -->
-    <node pkg="turtlebot_control" exec="intercept" name="intercept"></node>
+    <node pkg="robot_mapping" exec="intercept" name="intercept"></node>
 
     <!-- Launch path node -->
-    <node pkg="turtlebot_control" exec="path_publisher" name="path_publisher"></node>
+    <node pkg="robot_mapping" exec="path_publisher" name="path_publisher"></node>
 
     <!-- Launch slam-toolbox in online async mode -->
     <include file="$(find-pkg-share slam_toolbox)/launch/online_async_launch.py">
-        <arg name="slam_params_file" value="$(find-pkg-share turtlebot_control)/config/mapper_params_online_async_sim.yaml"/>
+        <arg name="slam_params_file" value="$(find-pkg-share robot_mapping)/config/mapper_params_online_async_sim.yaml"/>
     </include>
 
 </launch>

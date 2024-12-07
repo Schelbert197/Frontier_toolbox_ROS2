@@ -1,4 +1,4 @@
-# Frontier_toolbox_ROS2
+# frontier_toolbox
 These packages are created to be an easy-to-use platform to rapidly prototype frontier exploration algorithms on a robot in various environments with both full and limited field of view sensor data. Through this package, users should be able to easily leverage the provided libraries to generate, cluster, and evaluate frontiers or integrate the provided component functions into their own novel approaches.
 
 ![Example_pic1](frontier_exp_cpp/images/frontier_demo.gif)![Example_pic2](frontier_exp_cpp/images/frontier_demo2.gif)
