@@ -50,8 +50,9 @@ All steps are assumed to be done on the robot through an ssh terminal.
 4. In a second terminal run the commmand `ros2 launch frontier_exp_cpp nav_frontier.launch.py use_sim_time:=false`. 
     - NOTE: On my robot, the base frame was "base_link" not "base_footprint" which is a distiction built into the launch file. If this is different for you, ensure this corrected in the launch and params files. 
 5. Once Nav2 is configured and the bond timer is set, activate my frontier node with `ros2 lifecycle set /frontier_explorer activate` which can be done on the local machine. 
-6. (Optional) For those who wish to monitor the robot, there are two rviz configurations that can be launched with either `ros2 launch robot_mapping turtlebot3_rviz.launch.py` or 
-    - **TODO: Add other launch file**
+6. (Optional) For those who wish to monitor the robot, there are two rviz configurations that can be launched:
+    - `ros2 launch robot_mapping mapper_rviz.launch.py` (the config that launches with the `robot_mapping` package)
+    - `ros2 launch frontier_exp_cpp robot_2d_nav_rviz.launch.py` (A fuller config that is setup with the Nav2 plugins)
 
 ## Package Parameters
 The following parameters are in the `frontier_params.yaml` file in the `frontier_exp_cpp` package. 
