@@ -4,13 +4,13 @@ These packages are created to be an easy-to-use platform to rapidly prototype fr
 ![Example_pic1](frontier_exp_cpp/images/frontier_demo.gif)![Example_pic2](frontier_exp_cpp/images/frontier_demo2.gif)
 
 ## Overview
-This package was created to study the performance of various frontier exploration algorithms paired wit slam_toolbox and Nav2 with both 360 degree and narrowed Field of View (FOV) on the LaserScan. This narrow FOV simulated a 2D lidar sensor that may be "damaged" or "occluded" during usage. Users can re-run my tests in simulation or on their own differential drive robots if they would like. 
+This package was created to study the performance of various frontier exploration algorithms. This implementation is paired with slam_toolbox and Nav2 with both 360 degree and narrowed Field of View (FOV) on the LaserScan. The narrow FOV simulates a 2D lidar sensor that may be "damaged" or "occluded" during usage. Users can re-run my tests in simulation or on their own differential drive robots. 
 
 For those using this package some provided features include:
-- Flatten a 3D to 2D lidar scan
-- Systematically and dynamically corrupt lidar data
 - Utilize my frontier generation library for other frontier exploration methods
 - Utilize my clustering library to cluster frontiers with DBSCAN
+- Flatten a 3D to 2D lidar scan
+- Systematically and dynamically corrupt lidar data
 - Test frontier algorithms provided in this package.
 
 ## Portfolio Post

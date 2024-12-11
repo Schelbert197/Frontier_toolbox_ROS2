@@ -126,6 +126,11 @@ public:
   const Coord robot_vp_position,
   const nav_msgs::msg::OccupancyGrid & map_data);
 
+  /// @brief Chooses a random cell from the list of candidates.
+  /// @param candidates 
+  /// @return The randomly selected candidate.
+  static Cell selectRandomFrontier(const std::vector<Cell> & candidates);
+
   /// @brief Calculates the entropy of a map cell value.
   /// @param cell_value The occupancy value of the cell (-1: unknown, 0: free, 100: occupied).
   /// @return The entropy value for the given cell.

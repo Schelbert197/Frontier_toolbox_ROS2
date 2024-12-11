@@ -220,6 +220,15 @@ FrontierHelper::Cell FrontierHelper::selectByDistance(const std::vector<Cell> & 
     return goal_frontier;
 }
 
+FrontierHelper::Cell FrontierHelper::selectRandomFrontier(const std::vector<Cell> & candidates)
+{
+  // Set up random engine and return randomly selected cell
+  std::random_device rd;
+  std::mt19937 engine{rd()};   // Mersenne Twister RNG
+  std::uniform_int_distribution<int> dist(0, candidates.size() - 1);
+  return candidates.at(dist(engine));
+}
+
 double FrontierHelper::calculateEntropy(int cell_value)
 {
   double v;

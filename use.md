@@ -22,6 +22,7 @@ This means that users could mix-and-match functions from each cell to create nov
     - scoreByFlipCount
     - findLargestCluster
     - findSecondLargestCluster
+    - selectRandomFrontier
 4. General helpful functions:
     - cellToWorld
 
